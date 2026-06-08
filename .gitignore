@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.env
+.DS_Store
+
+# Generated reports — don't commit client data
+CMA_report.html
+CMA_report.pdf
+
+# Actual MLS exports — don't commit. (sample_comps.csv is fine.)
+comps.csv

@@ -1,0 +1,4 @@
+pandas>=2.0
+pyyaml>=6.0
+# Optional — only needed if using --pdf:
+# playwright>=1.40

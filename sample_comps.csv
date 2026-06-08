@@ -1,0 +1,11 @@
+Address,Status,Beds,Baths,SqFt,List Price,Sale Price,DOM,Close Date,Subdivision
+123 Oak Park Lane,Sold,2,2,1450,1295000,1320000,12,2026-04-15,Oak Park
+145 Oak Park Lane,Sold,2,2,1480,1350000,1380000,9,2026-03-22,Oak Park
+167 Oak Park Lane,Pending,2,2.5,1520,1395000,,7,,Oak Park
+89 Maple Court,Sold,2,2,1420,1275000,1250000,28,2026-02-10,Maple Court
+256 Cedar Place,Sold,3,2,1620,1395000,1425000,15,2026-03-05,Cedar Park
+412 Birch Way,Active,2,2,1490,1450000,,34,,Birch Park
+78 Willow Terrace,Sold,2,2,1380,1199000,1215000,11,2026-04-28,Willow
+522 Pine Street,Sold,2,2,1500,1350000,1340000,19,2026-01-18,Pine
+90 Oak Park Lane,Active,2,2,1460,1399000,,8,,Oak Park
+200 Elm Court,Sold,3,2.5,1750,1495000,1525000,6,2026-04-02,Elm

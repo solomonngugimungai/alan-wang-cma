@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Comparative Market Analysis — {{SUBJECT_ADDR}}</title>
+<style>
+  @page { size: Letter; margin: 0; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    color: #1a1a1a;
+    font-size: 11px;
+    line-height: 1.5;
+    background: #ececea;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    font-feature-settings: 'tnum' 1;
+  }
+  .page {
+    width: 8.5in;
+    min-height: 11in;
+    padding: 0.5in 0.55in 0.45in;
+    margin: 0 auto;
+    background: #ffffff;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+  /* ── Header ─────────────────────────────────────────────────────────── */
+  .head {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    padding-bottom: 14px;
+    border-bottom: 2px solid #0a2540;
+  }
+  .brand .firm {
+    font-size: 16px; font-weight: 700; letter-spacing: 0.14em;
+    color: #0a2540; text-transform: uppercase;
+  }
+  .brand .office { font-size: 10px; color: #6b7280; margin-top: 3px; letter-spacing: 0.02em; }
+  .head-meta { text-align: right; }
+  .head-meta .title {
+    font-size: 12px; color: #1a1a1a; font-weight: 600; margin-bottom: 3px;
+  }
+  .head-meta .label {
+    font-size: 9px; text-transform: uppercase; letter-spacing: 0.1em;
+    color: #b8895c; font-weight: 600;
+  }
+
+  /* ── Reusable labels ────────────────────────────────────────────────── */
+  .label-sm {
+    font-size: 9px; text-transform: uppercase; letter-spacing: 0.12em;
+    color: #b8895c; font-weight: 700; margin-bottom: 5px;
+  }
+  .section-title {
+    font-size: 9px; text-transform: uppercase; letter-spacing: 0.12em;
+    color: #b8895c; font-weight: 700; margin-bottom: 8px;
+  }
+  .section-title .count {
+    color: #6b7280; font-weight: 400; margin-left: 8px;
+    letter-spacing: 0.02em; text-transform: none; font-size: 9px;
+  }
+
+  /* ── Subject card ───────────────────────────────────────────────────── */
+  .subject {
+    background: #fafaf9;
+    border: 1px solid #e5e7eb;
+    border-radius: 4px;
+    padding: 14px 18px;
+    display: grid;
+    grid-template-columns: 1.1fr 1fr;
+    gap: 18px;
+    align-items: center;
+  }
+  .subject .addr {
+    font-size: 17px; font-weight: 600; color: #0a2540;
+    letter-spacing: -0.005em; line-height: 1.25;
+  }
+  .subject .city { font-size: 11px; color: #6b7280; margin-top: 3px; }
+  .specs .primary {
+    font-size: 12px; font-weight: 600; color: #1a1a1a;
+    font-variant-numeric: tabular-nums;
+  }
+  .specs .meta {
+    color: #6b7280; margin-top: 4px; font-size: 10.5px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ── Hero price ─────────────────────────────────────────────────────── */
+  .hero {
+    text-align: center;
+    padding: 22px 0 20px;
+    border-top: 1px solid #e5e7eb;
+    border-bottom: 1px solid #e5e7eb;
+  }
+  .hero .label-sm { margin-bottom: 8px; }
+  .hero .price {
+    font-size: 44px;
+    font-weight: 700;
+    color: #0a2540;
+    letter-spacing: -0.025em;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.05;
+  }
+  .hero .range {
+    font-size: 11px;
+    color: #6b7280;
+    margin-top: 6px;
+    letter-spacing: 0.01em;
+  }
+  .hero .range b { color: #1a1a1a; font-weight: 600; }
+
+  /* ── Metrics row ────────────────────────────────────────────────────── */
+  .metrics {
+    display: grid; grid-template-columns: 1fr 1fr 1fr;
+    border: 1px solid #e5e7eb; border-radius: 4px;
+    overflow: hidden;
+  }
+  .metric { padding: 12px 14px; border-right: 1px solid #e5e7eb; }
+  .metric:last-child { border-right: none; }
+  .metric .label-sm { margin-bottom: 4px; }
+  .metric .val {
+    font-size: 17px; font-weight: 600; color: #0a2540;
+    font-variant-numeric: tabular-nums; letter-spacing: -0.01em;
+  }
+  .metric .note { font-size: 9.5px; color: #6b7280; margin-top: 4px; line-height: 1.45; }
+
+  /* ── Comps table ────────────────────────────────────────────────────── */
+  table { width: 100%; border-collapse: collapse; font-size: 10px; }
+  thead th {
+    text-align: left;
+    font-size: 8.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #6b7280;
+    font-weight: 600;
+    padding: 6px 6px 8px 4px;
+    border-bottom: 1px solid #d4d4d2;
+  }
+  thead th.num { text-align: right; }
+  tbody td {
+    padding: 8px 6px 8px 4px;
+    border-bottom: 1px solid #f1f1f0;
+    vertical-align: top;
+    font-variant-numeric: tabular-nums;
+  }
+  tbody td.num { text-align: right; white-space: nowrap; }
+  tbody tr:last-child td { border-bottom: none; }
+  .addr-cell b { font-weight: 600; color: #1a1a1a; display: block; line-height: 1.3; }
+  .addr-cell span {
+    display: block; font-size: 8.5px; color: #b8895c;
+    text-transform: uppercase; letter-spacing: 0.08em;
+    margin-top: 2px; font-weight: 600;
+  }
+  .pill {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 8.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .pill.sold   { background: #e7f6ee; color: #0c6b3b; }
+  .pill.pend   { background: #fdf1d6; color: #8a5a14; }
+  .pill.active { background: #eef0f3; color: #4b5563; }
+  .adj-pos { color: #0c6b3b; font-weight: 500; }
+  .adj-neg { color: #a8231b; font-weight: 500; }
+
+  /* ── Narrative ──────────────────────────────────────────────────────── */
+  .narrative {
+    background: #fafaf9;
+    border-left: 3px solid #b8895c;
+    padding: 13px 16px;
+    border-radius: 0 4px 4px 0;
+    font-size: 11px;
+    line-height: 1.65;
+    color: #2d2d2d;
+  }
+
+  /* ── Footer ─────────────────────────────────────────────────────────── */
+  .foot {
+    margin-top: auto;
+    padding-top: 12px;
+    border-top: 1px solid #e5e7eb;
+    font-size: 9px;
+    color: #6b7280;
+    text-align: center;
+    line-height: 1.55;
+  }
+  .foot .prepared { margin-bottom: 3px; color: #374151; font-weight: 500; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="head">
+    <div class="brand">
+      <div class="firm">{{FIRM}}</div>
+      <div class="office">{{OFFICE}}</div>
+    </div>
+    <div class="head-meta">
+      <div class="title">Comparative Market Analysis</div>
+      <div class="label">Prepared {{DATE}}</div>
+    </div>
+  </header>
+
+  <section class="subject">
+    <div>
+      <div class="label-sm">Subject Property</div>
+      <div class="addr">{{SUBJECT_ADDR}}</div>
+      <div class="city">{{SUBJECT_CITY_TYPE}}</div>
+    </div>
+    <div class="specs">
+      <div class="label-sm">Specs</div>
+      <div class="primary">{{BEDS}} Beds &middot; {{BATHS}} Baths &middot; {{SQFT}} sf &middot; Built {{YEAR}}</div>
+      <div class="meta">HOA ${{HOA}}/mo &middot; {{PARKING}}</div>
+    </div>
+  </section>
+
+  <section class="hero">
+    <div class="label-sm">Recommended List Price</div>
+    <div class="price">{{REC_PRICE}}</div>
+    <div class="range">Supported range <b>{{RANGE_LOW}} – {{RANGE_HIGH}}</b></div>
+  </section>
+
+  <section class="metrics">
+    <div class="metric">
+      <div class="label-sm">Adjusted Range</div>
+      <div class="val">{{ADJ_RANGE}}</div>
+      <div class="note">{{ADJ_RANGE_NOTE}}</div>
+    </div>
+    <div class="metric">
+      <div class="label-sm">Avg $/SF (Closed)</div>
+      <div class="val">{{AVG_PPSF}}</div>
+      <div class="note">{{PPSF_CALC}}</div>
+    </div>
+    <div class="metric">
+      <div class="label-sm">{{THIRD_METRIC_LABEL}}</div>
+      <div class="val">{{THIRD_METRIC_VALUE}}</div>
+      <div class="note">{{THIRD_METRIC_NOTE}}</div>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-title">Comparable Sales <span class="count">{{COMP_COUNT}} comps</span></div>
+    <table>
+      <thead>
+        <tr>
+          <th>Address</th>
+          <th>Status</th>
+          <th class="num">Bd / Ba</th>
+          <th class="num">SqFt</th>
+          <th class="num">$/SF</th>
+          <th class="num">DOM</th>
+          <th class="num">Price</th>
+          <th class="num">Net Adj</th>
+          <th class="num">Adjusted</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{COMP_ROWS}}
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <div class="section-title">Pricing Rationale</div>
+    <div class="narrative">{{NARRATIVE}}</div>
+  </section>
+
+  <footer class="foot">
+    <div class="prepared">Prepared by {{PREP_NAME}} &middot; {{FIRM}}</div>
+    <div>{{DISCLAIMER}}</div>
+  </footer>
+
+</div>
+</body>
+</html>
