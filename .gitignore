@@ -12,3 +12,6 @@ CMA_report.pdf
 
 # Actual MLS exports — don't commit. (sample_comps.csv is fine.)
 comps.csv
+
+# Streamlit local secrets / cache
+.streamlit/secrets.toml

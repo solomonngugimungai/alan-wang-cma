@@ -28,36 +28,50 @@ Do **not** modify this tool to "log in for me" or scrape. That violates MLS term
    ```
    pip install -r requirements.txt
    ```
-3. (Optional, for `--pdf`): `pip install playwright && playwright install chromium`
+3. (Optional, for PDF from the CLI): `pip install playwright && playwright install chromium`
 
-## Daily workflow (per CMA)
+## Daily workflow — web app (recommended)
 
-1. **Export comps from proMLS** into `comps.csv` (same folder as this tool). Use proMLS's export → CSV. Include at minimum: Address, Status, Beds, Baths, SqFt, List Price, Sale Price, DOM, Close Date, Subdivision.
+```
+python -m streamlit run app.py
+```
 
-2. **Fill in the subject property** in `config.yaml` — only the `subject:` and `subject_subdivision:` blocks at the top. Everything else is set once.
+Opens [http://localhost:8501](http://localhost:8501). Then per CMA:
 
-3. **Run**:
+1. **Export comps from proMLS** as CSV (use proMLS's own Export button).
+2. **Drag the CSV** into the upload box.
+3. **Fill in the subject property** (address, beds/baths/sqft, year, HOA, parking, subdivision).
+4. Click **Generate CMA**. Review the preview, click **Download report**, hand to Alan.
+
+Total time per CMA: ~1 minute after the export is in hand.
+
+The sidebar exposes branding and adjustment values — change those if the market shifts (e.g. tune `$ per sqft`) or to use a different agent's name.
+
+## Daily workflow — command line (power users)
+
+1. Drop the proMLS export as `comps.csv` in this folder.
+2. Edit `config.yaml` → `subject:` block.
+3. Run:
    ```
    python cma_processor.py --input comps.csv
    ```
    Add `--pdf` to also generate a PDF.
-
-4. **Review** `CMA_report.html`. Open in browser, eyeball, hand to Alan.
-
-Total time per CMA after setup: ~2 minutes.
+4. Open `CMA_report.html`.
 
 ## Where to change what
 
-| You want to change… | Edit this |
+| You want to change… | Where |
 |---|---|
-| Subject property details | `config.yaml` → `subject:` |
-| Firm / office / agent name | `config.yaml` → `branding:` |
-| $/sqft, $/bed, $/bath adjustments | `config.yaml` → `adjustments:` |
-| Market drift % per month | `config.yaml` → `adjustments.monthly_market_drift_pct` |
-| Whether pending comps count toward value | `config.yaml` → `pricing.include_pending_in_value` |
+| Subject property details | Web app form (or `config.yaml` → `subject:`) |
+| Firm / office / agent name | Web app sidebar (or `config.yaml` → `branding:`) |
+| $/sqft, $/bed, $/bath adjustments | Web app sidebar (or `config.yaml` → `adjustments:`) |
+| Market drift % per month | Web app sidebar (or `config.yaml` → `adjustments.monthly_market_drift_pct`) |
+| Whether pending comps count toward value | Web app sidebar (or `config.yaml` → `pricing.include_pending_in_value`) |
 | What MLS column names mean (if proMLS changes the export) | `config.yaml` → `columns:` |
 | Visual design of the report | `template.html` |
 | Pricing rationale wording | `cma_processor.py` → `draft_narrative()` |
+
+The web app reads `config.yaml` for its initial values — anything changed in the sidebar is just for that session. To make a sidebar change permanent, edit `config.yaml`.
 
 ## Troubleshooting
 

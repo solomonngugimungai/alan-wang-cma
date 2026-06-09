@@ -1,4 +1,5 @@
 pandas>=2.0
 pyyaml>=6.0
-# Optional — only needed if using --pdf:
+streamlit>=1.30
+# Optional — only needed if using --pdf from the CLI:
 # playwright>=1.40
