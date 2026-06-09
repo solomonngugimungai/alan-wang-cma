@@ -1,5 +1,11 @@
 pandas>=2.0
 pyyaml>=6.0
 streamlit>=1.30
+
+# File-type support
+openpyxl>=3.1            # Excel (.xlsx, .xls)
+pdfplumber>=0.10         # PDF text-table extraction
+anthropic>=0.40          # Claude vision (PDFs that aren't text-tables, and images)
+
 # Optional — only needed if using --pdf from the CLI:
 # playwright>=1.40

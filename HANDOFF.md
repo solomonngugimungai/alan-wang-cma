@@ -38,12 +38,34 @@ python -m streamlit run app.py
 
 Opens [http://localhost:8501](http://localhost:8501). Then per CMA:
 
-1. **Export comps from proMLS** as CSV (use proMLS's own Export button).
-2. **Drag the CSV** into the upload box.
+1. **Get the comps**. Any of these works (or mix them):
+   - CSV export from proMLS (fastest, no AI cost)
+   - Excel (.xlsx / .xls)
+   - PDF comp report
+   - Screenshots of MLS listings (one or many)
+2. **Drag the file(s)** into the upload box. Multiple files combine into one comp list.
 3. **Fill in the subject property** (address, beds/baths/sqft, year, HOA, parking, subdivision).
 4. Click **Generate CMA**. Review the preview, click **Download report**, hand to Alan.
 
-Total time per CMA: ~1 minute after the export is in hand.
+Total time per CMA: ~1 minute (CSV) to ~30 seconds per page (PDF/image extraction).
+
+### Setting up Claude vision (only needed for PDFs and images)
+
+CSV and Excel uploads work without any API key. PDFs and image uploads use Claude to extract the comp data, which needs an Anthropic API key.
+
+**Locally** — add this to your `~/.zshrc` or `~/.bashrc`:
+```
+export ANTHROPIC_API_KEY=sk-ant-...
+```
+Then restart your terminal. Get a key at [console.anthropic.com](https://console.anthropic.com).
+
+**On Streamlit Cloud** — in your app's *Settings → Secrets*, add:
+```
+ANTHROPIC_API_KEY = "sk-ant-..."
+```
+The app picks it up automatically (Streamlit exposes secrets as env vars).
+
+Vision extraction costs roughly $0.01–0.05 per page or image. Negligible per CMA.
 
 The sidebar exposes branding and adjustment values — change those if the market shifts (e.g. tune `$ per sqft`) or to use a different agent's name.
 

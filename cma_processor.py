@@ -120,7 +120,14 @@ def load_config(path):
 
 
 def read_comps(input_path, cfg):
-    df = pd.read_csv(input_path)
+    """CLI entry: read a CSV path, then parse."""
+    return parse_comps_df(pd.read_csv(input_path), cfg)
+
+
+def parse_comps_df(df, cfg):
+    """Parse any DataFrame whose headers match config.yaml column aliases.
+    Use this when the DataFrame comes from somewhere other than a CSV
+    on disk (Excel, PDF extraction, Claude vision, etc.)."""
     cols = cfg["columns"]
     resolved = {field: find_column(df, aliases) for field, aliases in cols.items()}
 

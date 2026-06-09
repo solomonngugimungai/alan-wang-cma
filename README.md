@@ -12,7 +12,9 @@ python -m streamlit run app.py
 ```
 
 Opens [http://localhost:8501](http://localhost:8501) in your browser.
-Drag the comp CSV in, fill the subject property form, click **Generate CMA**, download the report.
+Drag comps in (CSV, Excel, PDF, or images — multiple files combine), fill the subject property form, click **Generate CMA**, download the report.
+
+PDFs and images use Claude vision to extract the comp data — set `ANTHROPIC_API_KEY` to enable. CSV and Excel work without any API key.
 
 ### Command line (for scripting / power users)
 

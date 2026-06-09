@@ -8,13 +8,14 @@ Deploys for free at share.streamlit.io once this repo is on GitHub.
 """
 
 import datetime as dt
-import tempfile
 from pathlib import Path
 
+import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 
 import cma_processor as cma
+import extractors
 
 HERE = Path(__file__).parent
 DEFAULTS = cma.load_config(HERE / "config.yaml")
@@ -55,11 +56,15 @@ with st.sidebar:
 st.title("CMA Generator")
 st.caption("Upload a proMLS comp export, fill in the subject property, get a print-ready CMA.")
 
-st.subheader("1. Comp CSV")
-csv_file = st.file_uploader(
-    "Drop the comp export from proMLS here (or click to browse).",
-    type=["csv"],
-    label_visibility="collapsed",
+st.subheader("1. Comps")
+uploaded = st.file_uploader(
+    "CSV, Excel, PDF, or images. Upload multiple files and they'll be combined.",
+    type=["csv", "xlsx", "xls", "pdf", "png", "jpg", "jpeg", "webp"],
+    accept_multiple_files=True,
+)
+st.caption(
+    "CSV / Excel parse instantly. PDFs and images use Claude vision "
+    "(needs `ANTHROPIC_API_KEY` set in your environment)."
 )
 
 st.subheader("2. Subject property")
@@ -85,10 +90,10 @@ with col_right:
 
 st.write("")
 go = st.button("Generate CMA", type="primary",
-               use_container_width=True, disabled=csv_file is None)
+               use_container_width=True, disabled=not uploaded)
 
 # ── Action ────────────────────────────────────────────────────────────────
-if go and csv_file:
+if go and uploaded:
     cfg = {
         "subject": {
             "address": address, "city_type": city_type,
@@ -114,25 +119,35 @@ if go and csv_file:
         "status_map": DEFAULTS["status_map"],
     }
 
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as tf:
-        tf.write(csv_file.getvalue())
-        csv_path = tf.name
+    dfs = []
+    with st.spinner(f"Extracting comps from {len(uploaded)} file(s)…"):
+        for f in uploaded:
+            try:
+                dfs.append(extractors.file_to_df(f))
+            except extractors.ExtractionError as e:
+                st.error(f"**{f.name}** — {e}")
+                st.stop()
+            except Exception as e:
+                st.error(f"**{f.name}** — unexpected error: {e}")
+                st.stop()
+
+    combined_df = pd.concat(dfs, ignore_index=True)
 
     try:
-        comps = cma.read_comps(csv_path, cfg)
+        comps = cma.parse_comps_df(combined_df, cfg)
         result = cma.analyze(comps, cfg)
     except cma.CMAError as e:
         st.error(str(e))
         st.stop()
     except Exception as e:
-        st.error(f"Could not process this CSV: {e}")
+        st.error(f"Could not analyze comps: {e}")
         st.stop()
 
     html = cma.render(result, cfg, HERE / "template.html")
 
     st.success(
         f"Generated from {len(result['valued'])} value-driving comps "
-        f"(of {len(comps)} total)."
+        f"(of {len(comps)} total, across {len(uploaded)} uploaded file(s))."
     )
 
     m1, m2, m3 = st.columns(3)
