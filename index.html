@@ -94,6 +94,12 @@
   .ct .subj-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--gold);margin-right:5px;vertical-align:middle}
   .ct .avg-row{background:var(--off-white);border-top:1.5px solid var(--gray-border)}.ct .avg-row td{font-weight:700;font-size:11px;color:var(--navy)}
   .ct .mls{font-family:var(--mono);font-size:10.5px;color:var(--gray-text)}.ct .dim{color:var(--gray-text);font-size:11px}.ct .fw{font-weight:600}
+  /* Listing-source links — address text → Zillow, small "RF" pill → Redfin. */
+  a.addr-link{color:inherit;text-decoration:none;border-bottom:1px dotted var(--gold);transition:color .12s,border-color .12s}
+  a.addr-link:hover{color:var(--gold);border-bottom-color:currentColor}
+  a.rf-link{display:inline-block;font-size:9px;font-weight:700;letter-spacing:.06em;color:var(--gray-text);text-decoration:none;margin-left:5px;padding:1px 5px;border:1px solid var(--gray-border);border-radius:3px;vertical-align:1px;transition:color .12s,border-color .12s,background .12s}
+  a.rf-link:hover{color:#fff;background:var(--gold);border-color:var(--gold)}
+  @media print{a.addr-link,a.rf-link{color:inherit;border-color:#999}a.addr-link{border-bottom:1px dotted #999}}
   .sum-sec{margin-top:22px;margin-bottom:16px}.sum-sec h3{font-size:14px;font-weight:600;margin-bottom:0}
   .st-tbl{width:100%;border-collapse:collapse;font-size:12px}.st-tbl thead{background:var(--navy)}
   .st-tbl th{padding:6px 6px;color:#fff;font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;text-align:right}.st-tbl th:first-child{text-align:left;padding-left:8px}
@@ -160,6 +166,18 @@ function fmt(n){if(n==null||isNaN(n))return"—";return"$"+Number(n).toLocaleStr
 function fmtD(n){if(n==null||isNaN(n))return"—";return"$"+Number(n).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}
 function med(a){if(!a.length)return 0;var s=a.slice().sort(function(x,y){return x-y}),m=Math.floor(s.length/2);return s.length%2?s[m]:(s[m-1]+s[m])/2}
 function show(id){document.querySelectorAll('.screen').forEach(function(el){el.classList.remove('on')});document.getElementById(id).classList.add('on');window.scrollTo(0,0)}
+
+/* Build a full address ("123 Main, City, ST ZIP") by borrowing city/state from the subject when the comp only has a street. */
+function fullAddr(addr){
+  if(!addr)return"";
+  if(addr.indexOf(",")!==-1)return addr;
+  var cityState="";
+  if(DATA&&DATA.subjectAddress){var parts=DATA.subjectAddress.split(",");if(parts.length>=2)cityState=parts.slice(1).join(",").trim()}
+  return cityState?addr+", "+cityState:addr;
+}
+function zillowURL(addr){var slug=fullAddr(addr).replace(/#/g,"").replace(/,/g,"").trim().replace(/\s+/g,"-");return"https://www.zillow.com/homes/"+encodeURIComponent(slug)+"_rb/"}
+function redfinURL(addr){return"https://www.redfin.com/?q="+encodeURIComponent(fullAddr(addr))}
+function addrLinks(addr){var safe=esc(addr);return'<a class="addr-link" href="'+zillowURL(addr)+'" target="_blank" rel="noopener">'+safe+'</a> <a class="rf-link" href="'+redfinURL(addr)+'" target="_blank" rel="noopener" title="View on Redfin">RF</a>'}
 
 function parse(raw){
   var lines=raw.split("\n").map(function(l){return l.trim()}).filter(Boolean);
@@ -329,7 +347,7 @@ function renderCompList(){
   for(var i=0;i<CS.length;i++){var cs=CS[i],c=cs.comp,cls=cs.included?"":"excluded",scCls=cs.score>=70?"hi":cs.score>=40?"md":"lo";
     h+='<div class="comp-card '+cls+'" id="cc-'+i+'"><div class="cc-body">';
     h+='<input type="checkbox" class="cc-check" '+(cs.included?"checked":"")+' onchange="toggleComp('+i+',this.checked)">';
-    h+='<div class="cc-main"><div><div class="cc-addr">'+esc(c.address)+'</div><div class="cc-mls">'+esc(c.mls)+' &middot; '+esc(cs.status)+'</div></div>';
+    h+='<div class="cc-main"><div><div class="cc-addr">'+addrLinks(c.address)+'</div><div class="cc-mls">'+esc(c.mls)+' &middot; '+esc(cs.status)+'</div></div>';
     h+='<div>'+(c.sqft?c.sqft.toLocaleString():"—")+'</div><div>'+(c.beds||"—")+'</div><div>'+(c.baths||"—")+'</div>';
     h+='<div class="cc-fw">'+(c.price?fmt(c.price):"—")+'</div><div class="cc-dim">'+(c.statusDt||"—")+'</div><div>'+(c.dom!=null?c.dom:"—")+'</div></div>';
     h+='<div style="display:flex;align-items:center;gap:8px"><div class="score '+scCls+'">'+cs.score+'</div></div></div>';
@@ -383,7 +401,7 @@ function doGenerate(){
     h+='</tr></thead><tbody><tr class="subj-row"><td><span class="subj-dot"></span>'+esc((DATA.subjectAddress||"Subject").split(",")[0])+'</td><td></td><td class="l">'+(DATA.subjectCode||"")+'</td><td>'+(DATA.subjectSqFt?DATA.subjectSqFt.toLocaleString():"—")+'</td><td>'+(DATA.subjectBeds||"—")+'</td><td>'+(DATA.subjectBaths||"—")+'</td><td colspan="3"></td></tr>';
     var sS=0,cS=0,sB=0,cB=0,sP=0,cP=0,sD=0,cD=0;
     for(var c=0;c<gr.comps.length;c++){var comp=gr.comps[c];
-      h+='<tr><td>'+esc(comp.address)+'</td><td class="mls">'+esc(comp.mls)+'</td><td class="l dim">'+esc(comp.subType)+'</td><td>'+(comp.sqft?comp.sqft.toLocaleString():"—")+'</td><td>'+(comp.beds||"—")+'</td><td>'+(comp.baths||"—")+'</td><td class="fw">'+(comp.price?fmt(comp.price):"—")+'</td><td class="dim">'+(comp.statusDt||"—")+'</td><td>'+(comp.dom!=null?comp.dom:"—")+'</td></tr>';
+      h+='<tr><td>'+addrLinks(comp.address)+'</td><td class="mls">'+esc(comp.mls)+'</td><td class="l dim">'+esc(comp.subType)+'</td><td>'+(comp.sqft?comp.sqft.toLocaleString():"—")+'</td><td>'+(comp.beds||"—")+'</td><td>'+(comp.baths||"—")+'</td><td class="fw">'+(comp.price?fmt(comp.price):"—")+'</td><td class="dim">'+(comp.statusDt||"—")+'</td><td>'+(comp.dom!=null?comp.dom:"—")+'</td></tr>';
       if(comp.sqft){sS+=comp.sqft;cS++}if(comp.beds){sB+=parseInt(comp.beds);cB++}if(comp.price){sP+=comp.price;cP++}if(comp.dom!=null){sD+=comp.dom;cD++}}
     h+='<tr class="avg-row"><td colspan="3" style="text-align:right;padding-right:10px">Average</td><td>'+(cS?Math.round(sS/cS).toLocaleString():"—")+'</td><td>'+(cB?Math.round(sB/cB):"—")+'</td><td></td><td class="fw">'+(cP?fmt(Math.round(sP/cP)):"—")+'</td><td></td><td>'+(cD?Math.round(sD/cD):"—")+'</td></tr></tbody></table>'}
   // Summary
