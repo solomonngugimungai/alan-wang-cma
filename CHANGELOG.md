@@ -1,5 +1,19 @@
 # Changelog
 
+## v1.4.0 — 2026-06-11
+
+Pulled in features from the MLSListings "Residential Summary" reference Alan shared.
+
+- **$/SqFt as a real column** on every comp row (computed from headline price / sqft).
+- **List Price and Sale Price are now separate columns** — for sold comps that have both numbers in the source, both show; non-sold rows show `—` for sale. Parser was extended to capture the second `$` amount when present.
+- **MLS# moved under the address** (mono, dim) to free up a column slot. "Sub Type" appended on the same sub-line when present.
+- **Per-group listing count** appears next to the status label and inside the Average row.
+- **New "Quick Statistics" box** at the bottom of the report — Min / Max / Median for List Price and Sale Price across all included comps (Alan's reference layout).
+- Tests added for two-price parsing (sold-with-both vs. active-with-list-only) and the back-compat single-price case.
+
+Not yet implemented (held back because the parser would be guessing without a real export to verify against):
+- City column, Lot (SF), Age, COE as its own date. Paste a real MLSListings PDF export and we'll wire these up.
+
 ## v1.3.0 — 2026-06-11
 
 - **Condition rating per comp** (Alan's request). Four tiers, each with a tooltip hint:

@@ -169,6 +169,36 @@
   assertEq("first sold MLS = ML82000001",  d.statusGroups[0].comps[0].mls, "ML82000001");
   assertEq("first sold DOM = 12",          d.statusGroups[0].comps[0].dom, 12);
 
+  // Single-price sold rows: parser populates listPrice; salePrice null.
+  assertEq("single-price: listPrice set",  d.statusGroups[0].comps[0].listPrice, 1320000);
+  assertEq("single-price: salePrice null", d.statusGroups[0].comps[0].salePrice, null);
+
+  // ── Two-price parsing (sold lines with both list and sale) ────────
+  group("Two-price parsing (list + sale)");
+  var twoPriceSample = [
+    "Subject Property: 100 Foo St, San Jose, CA 95014",
+    "Status: Sold",
+    "4599 Tilbury Drive ML82100001 Res. Single Family 1789 4 3/0 $2,390,000 66 $2,760,000 11/25/25 19"
+  ].join("\n");
+  var d2 = parse(twoPriceSample);
+  var sold = d2.statusGroups[0].comps[0];
+  assertEq("two-price: listPrice = 2390000", sold.listPrice, 2390000);
+  assertEq("two-price: salePrice = 2760000", sold.salePrice, 2760000);
+  // For sold comps, comp.price should be the sale price (more relevant).
+  assertEq("two-price: price = sale",        sold.price,     2760000);
+
+  // Active lines: only list price, no sale price.
+  var activeSample = [
+    "Subject Property: 100 Foo St, San Jose, CA 95014",
+    "Status: Active",
+    "3876 Gleason Avenue ML82200001 Res. Single Family 1876 4 3/0 $2,298,000 66 7"
+  ].join("\n");
+  var dA = parse(activeSample);
+  var act = dA.statusGroups[0].comps[0];
+  assertEq("active: listPrice = 2298000", act.listPrice, 2298000);
+  assertEq("active: salePrice = null",    act.salePrice, null);
+  assertEq("active: price = list",        act.price,     2298000);
+
   // ── Summary ───────────────────────────────────────────────────────
   var summary = document.getElementById("summary");
   var ok = fail===0;

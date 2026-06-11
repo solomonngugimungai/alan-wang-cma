@@ -14,7 +14,7 @@
  *   2 tiers off     -3
  *   3 tiers off     -5
  */
-var VERSION = "1.3.0";
+var VERSION = "1.4.0";
 var DATA = null, CS = [];
 var DISTRICTS = ["—","Cupertino Union SD","Sunnyvale SD","Santa Clara Unified","Fremont Union HSD","Mountain View Whisman SD","Los Altos SD","Campbell Union SD","San Jose Unified","Milpitas Unified","Palo Alto Unified","Other"];
 var CONDITION_TIERS = ["—","High","Mid-High","Mid","Low"];
@@ -59,7 +59,16 @@ function parse(raw){
     if(skipRe.test(line)||line.length<8)continue;
     if(curSt&&!subF&&subAddr){var ap=subAddr.split(",")[0].trim().split(" "),sa=ap.slice(0,3).join(" ");
       if(line.indexOf(sa)!==-1&&!mlsRe.test(line)){subF=true;var sqm=line.match(/(\d[,\d]*)\s+(\d)\s+(\d\/\d)/);if(sqm){subSqFt=parseInt(sqm[1].replace(",",""));subBeds=sqm[2];subBaths=sqm[3]}var cm=line.match(/\b(10[0-9])\b/);if(cm)subCode=cm[1];continue}}
-    if(curSt&&mlsRe.test(line)){var mls=line.match(mlsRe)[1],pm=line.match(/\$[\d,]+/g),price=pm?parseInt(pm[0].replace(/[$,]/g,"")):null;
+    if(curSt&&mlsRe.test(line)){
+      var mls=line.match(mlsRe)[1];
+      // Capture every $ amount; first = list price, second (if present) = sale price.
+      var pm=line.match(/\$[\d,]+/g)||[];
+      var priceVals=pm.map(function(p){return parseInt(p.replace(/[$,]/g,""))});
+      var listPrice=priceVals.length>0?priceVals[0]:null;
+      var salePrice=priceVals.length>=2?priceVals[1]:null;
+      // "price" = the headline figure for this comp: sale price when sold, else list.
+      var isSold=/sold/i.test(curSt);
+      var price=isSold?(salePrice||listPrice):listPrice;
       var mi=line.indexOf(mls),addr=line.substring(0,mi).trim().replace(/\s+\d+\s*$/,"").trim();
       var subT="",tm=line.match(/Res\.\s*(Townhouse|Condominium|Single Family)/i);if(tm)subT="Res. "+tm[1];
       var after=tm?line.substring(line.indexOf(tm[0])+tm[0].length):line.substring(mi+mls.length);
@@ -68,7 +77,7 @@ function parse(raw){
       var sqft="",beds="";for(var j=0;j<cn.length;j++){var v=parseInt(cn[j]);if(v>=500&&v<=5000&&!sqft)sqft=cn[j];else if(v>=1&&v<=10&&sqft&&!beds)beds=cn[j]}
       var dom="",dm=after.match(/(\d+)\s*$/);if(dm&&parseInt(dm[1])<500)dom=dm[1];
       var dtm=line.match(/(\d{1,2}\/\d{1,2}\/\d{2,4})/),sdt=dtm?dtm[1]:"";
-      curC.push({address:addr||"Unknown",mls:mls,subType:subT,sqft:sqft?parseInt(sqft):null,beds:beds,baths:baths,price:price,statusDt:sdt,dom:dom?parseInt(dom):null,status:curSt})}}
+      curC.push({address:addr||"Unknown",mls:mls,subType:subT,sqft:sqft?parseInt(sqft):null,beds:beds,baths:baths,price:price,listPrice:listPrice,salePrice:salePrice,statusDt:sdt,dom:dom?parseInt(dom):null,status:curSt})}}
   if(curSt&&curC.length>0)groups.push({status:curSt,comps:curC.slice()});
   return{subjectAddress:subAddr,subjectSqFt:subSqFt,subjectBeds:subBeds,subjectBaths:subBaths,subjectCode:subCode,statusGroups:groups}
 }
@@ -321,19 +330,42 @@ function doGenerate(){
   if(sp){h+='<div class="price-bar"><div><div class="lbl">Suggested List Price</div><div class="val">'+esc(sp)+'</div></div>';if(sn){h+='<div class="notes"><div class="lbl">Rationale</div><p>'+esc(sn)+'</p></div>'}h+='</div>'}
   h+='<div class="rpt-body"><h2>Brief Summary of Comparable Properties</h2><p class="desc">A brief summary of the subject and comparable properties in this market analysis.</p>';
   for(var g=0;g<fGroups.length;g++){var gr=fGroups[g];
-    h+='<div class="st-label">Status: '+esc(gr.status)+'</div><table class="ct"><thead><tr>';
-    ["Address","MLS#","Sub Type","SqFt Tot","Beds","Baths","L/S Price","Status Dt","DOM"].forEach(function(c,i){h+='<th'+(i<=2?' class="l"':'')+'>'+c+'</th>'});
-    h+='</tr></thead><tbody><tr class="subj-row"><td><span class="subj-dot"></span>'+esc((DATA.subjectAddress||"Subject").split(",")[0])+'</td><td></td><td class="l">'+(DATA.subjectCode||"")+'</td><td>'+(DATA.subjectSqFt?DATA.subjectSqFt.toLocaleString():"—")+'</td><td>'+(DATA.subjectBeds||"—")+'</td><td>'+(DATA.subjectBaths||"—")+'</td><td colspan="3"></td></tr>';
-    var sS=0,cS=0,sB=0,cB=0,sP=0,cP=0,sD=0,cD=0;
+    h+='<div class="st-label">Status: '+esc(gr.status)+' <span class="st-count">('+gr.entries.length+' listing'+(gr.entries.length===1?"":"s")+')</span></div><table class="ct"><thead><tr>';
+    ["Address","Bd","Ba","SqFt","$/SqFt","DOM","List Price","Sale Price","Date"].forEach(function(c,i){h+='<th'+(i===0?' class="l"':'')+'>'+c+'</th>'});
+    h+='</tr></thead><tbody><tr class="subj-row"><td><span class="subj-dot"></span>'+esc((DATA.subjectAddress||"Subject").split(",")[0])+(DATA.subjectCode?' <span class="mls-inline">'+esc(DATA.subjectCode)+'</span>':'')+'</td><td>'+(DATA.subjectBeds||"—")+'</td><td>'+(DATA.subjectBaths||"—")+'</td><td>'+(DATA.subjectSqFt?DATA.subjectSqFt.toLocaleString():"—")+'</td><td colspan="5"></td></tr>';
+    var sSqft=0,cSqft=0,sBeds=0,cBeds=0,sList=0,cList=0,sSale=0,cSale=0,sDom=0,cDom=0,sPpsf=0,cPpsf=0;
     for(var c=0;c<gr.entries.length;c++){var entry=gr.entries[c],comp=entry.comp;
-      var cellExtras="";
+      var headlinePrice=comp.salePrice||comp.listPrice;
+      var ppsf=(headlinePrice&&comp.sqft)?Math.round(headlinePrice/comp.sqft):null;
+      var cellExtras='<div class="mls-line">'+esc(comp.mls)+(comp.subType?' &middot; '+esc(comp.subType):'')+'</div>';
       if(entry.condition&&entry.condition!=="—"){
         cellExtras+='<span class="cond-badge cond-'+entry.condition.toLowerCase().replace(/[^a-z]/g,"")+'">'+esc(entry.condition)+'</span>';
       }
       if(entry.description){cellExtras+='<span class="cond-desc">'+esc(entry.description)+'</span>'}
-      h+='<tr><td>'+addrLinks(comp.address)+cellExtras+'</td><td class="mls">'+esc(comp.mls)+'</td><td class="l dim">'+esc(comp.subType)+'</td><td>'+(comp.sqft?comp.sqft.toLocaleString():"—")+'</td><td>'+(comp.beds||"—")+'</td><td>'+(comp.baths||"—")+'</td><td class="fw">'+(comp.price?fmt(comp.price):"—")+'</td><td class="dim">'+(comp.statusDt||"—")+'</td><td>'+(comp.dom!=null?comp.dom:"—")+'</td></tr>';
-      if(comp.sqft){sS+=comp.sqft;cS++}if(comp.beds){sB+=parseInt(comp.beds);cB++}if(comp.price){sP+=comp.price;cP++}if(comp.dom!=null){sD+=comp.dom;cD++}}
-    h+='<tr class="avg-row"><td colspan="3" style="text-align:right;padding-right:10px">Average</td><td>'+(cS?Math.round(sS/cS).toLocaleString():"—")+'</td><td>'+(cB?Math.round(sB/cB):"—")+'</td><td></td><td class="fw">'+(cP?fmt(Math.round(sP/cP)):"—")+'</td><td></td><td>'+(cD?Math.round(sD/cD):"—")+'</td></tr></tbody></table>'}
+      h+='<tr><td>'+addrLinks(comp.address)+cellExtras+'</td>'+
+        '<td>'+(comp.beds||"—")+'</td>'+
+        '<td>'+(comp.baths||"—")+'</td>'+
+        '<td>'+(comp.sqft?comp.sqft.toLocaleString():"—")+'</td>'+
+        '<td>'+(ppsf?'$'+ppsf.toLocaleString():"—")+'</td>'+
+        '<td>'+(comp.dom!=null?comp.dom:"—")+'</td>'+
+        '<td class="fw">'+(comp.listPrice?fmt(comp.listPrice):"—")+'</td>'+
+        '<td class="fw">'+(comp.salePrice?fmt(comp.salePrice):"—")+'</td>'+
+        '<td class="dim">'+(comp.statusDt||"—")+'</td></tr>';
+      if(comp.sqft){sSqft+=comp.sqft;cSqft++}
+      if(comp.beds){sBeds+=parseInt(comp.beds);cBeds++}
+      if(comp.listPrice){sList+=comp.listPrice;cList++}
+      if(comp.salePrice){sSale+=comp.salePrice;cSale++}
+      if(comp.dom!=null){sDom+=comp.dom;cDom++}
+      if(ppsf){sPpsf+=ppsf;cPpsf++}
+    }
+    h+='<tr class="avg-row">'+
+      '<td colspan="3" style="text-align:right;padding-right:10px">Average ('+gr.entries.length+')</td>'+
+      '<td>'+(cSqft?Math.round(sSqft/cSqft).toLocaleString():"—")+'</td>'+
+      '<td>'+(cPpsf?'$'+Math.round(sPpsf/cPpsf).toLocaleString():"—")+'</td>'+
+      '<td>'+(cDom?Math.round(sDom/cDom):"—")+'</td>'+
+      '<td class="fw">'+(cList?fmt(Math.round(sList/cList)):"—")+'</td>'+
+      '<td class="fw">'+(cSale?fmt(Math.round(sSale/cSale)):"—")+'</td>'+
+      '<td></td></tr></tbody></table>'}
   // Summary
   h+='<div class="sum-sec"><h3>Summary</h3><table class="st-tbl"><thead><tr>';
   ["Status","Total","Avg Price","Avg $ Per Sq.Ft.","Median","Low","High","Avg DOM"].forEach(function(s,i){h+='<th'+(i===0?' style="text-align:left"':'')+'>'+s+'</th>'});
@@ -344,7 +376,29 @@ function doGenerate(){
     var ap=pr.length?pr.reduce(function(a,b){return a+b},0)/pr.length:0;
     h+='<tr><td>'+esc(gr.status)+'</td><td>'+gr.entries.length+'</td><td class="fw">'+fmt(Math.round(ap))+'</td><td>'+fmtD(ps.length?ps.reduce(function(a,b){return a+b},0)/ps.length:0)+'</td><td>'+fmt(med(pr))+'</td><td>'+fmt(pr.length?Math.min.apply(null,pr):0)+'</td><td>'+fmt(pr.length?Math.max.apply(null,pr):0)+'</td><td>'+(dm.length?Math.round(dm.reduce(function(a,b){return a+b},0)/dm.length):"—")+'</td></tr>'}
   var tAp=aP.length?aP.reduce(function(a,b){return a+b},0)/aP.length:0;
-  h+='<tr class="total-row"><td>Total</td><td>'+aP.length+'</td><td>'+fmt(Math.round(tAp))+'</td><td>'+fmtD(aPsf.length?aPsf.reduce(function(a,b){return a+b},0)/aPsf.length:0)+'</td><td>'+fmt(med(aP))+'</td><td>'+fmt(aP.length?Math.min.apply(null,aP):0)+'</td><td>'+fmt(aP.length?Math.max.apply(null,aP):0)+'</td><td>'+(aD.length?Math.round(aD.reduce(function(a,b){return a+b},0)/aD.length):"—")+'</td></tr></tbody></table></div></div>';
+  h+='<tr class="total-row"><td>Total</td><td>'+aP.length+'</td><td>'+fmt(Math.round(tAp))+'</td><td>'+fmtD(aPsf.length?aPsf.reduce(function(a,b){return a+b},0)/aPsf.length:0)+'</td><td>'+fmt(med(aP))+'</td><td>'+fmt(aP.length?Math.min.apply(null,aP):0)+'</td><td>'+fmt(aP.length?Math.max.apply(null,aP):0)+'</td><td>'+(aD.length?Math.round(aD.reduce(function(a,b){return a+b},0)/aD.length):"—")+'</td></tr></tbody></table></div>';
+
+  // Quick Statistics — Min / Max / Median for List and Sale prices across all included comps.
+  var allList=[],allSale=[];
+  for(var g=0;g<fGroups.length;g++){
+    for(var c=0;c<fGroups[g].entries.length;c++){
+      var cp=fGroups[g].entries[c].comp;
+      if(cp.listPrice)allList.push(cp.listPrice);
+      if(cp.salePrice)allSale.push(cp.salePrice);
+    }
+  }
+  if(allList.length||allSale.length){
+    h+='<div class="quickstats"><h3>Quick Statistics <span class="qs-count">('+inc.length+' listing'+(inc.length===1?"":"s")+' total)</span></h3>';
+    h+='<table class="qs-tbl"><thead><tr><th></th><th>Min</th><th>Max</th><th>Median</th></tr></thead><tbody>';
+    function qsRow(label,arr){
+      if(!arr.length)return"";
+      return'<tr><td>'+label+'</td><td>'+fmt(Math.min.apply(null,arr))+'</td><td>'+fmt(Math.max.apply(null,arr))+'</td><td>'+fmt(med(arr))+'</td></tr>';
+    }
+    h+=qsRow("List Price",allList);
+    h+=qsRow("Sale Price",allSale);
+    h+='</tbody></table></div>';
+  }
+  h+='</div>';  // close .rpt-body
   h+='<div class="rpt-foot"><div><div class="agent-lbl">Researched and prepared by</div><div class="agent-name">'+esc(name)+'</div><div class="agent-info">'+esc(brok);
   if(phone)h+=' &middot; '+esc(phone);if(lic)h+=' &middot; DRE# '+esc(lic);
   h+='</div></div><div class="disc">This represents an estimated sale price for this property. It is not the same as the opinion of value in an appraisal developed by a licensed appraiser under the Uniform Standards of Professional Appraisal Practice.</div></div>';
