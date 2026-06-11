@@ -7,10 +7,23 @@
  *   Beds match         25
  *   Baths match        20
  *   DOM                 5
+ *
+ * Condition rating (per Alan) layers on top as a ±5 modifier, clamped to [0, 100]:
+ *   exact match     +5
+ *   1 tier off       0  (no flag)
+ *   2 tiers off     -3
+ *   3 tiers off     -5
  */
-var VERSION = "1.2.0";
+var VERSION = "1.3.0";
 var DATA = null, CS = [];
 var DISTRICTS = ["—","Cupertino Union SD","Sunnyvale SD","Santa Clara Unified","Fremont Union HSD","Mountain View Whisman SD","Los Altos SD","Campbell Union SD","San Jose Unified","Milpitas Unified","Palo Alto Unified","Other"];
+var CONDITION_TIERS = ["—","High","Mid-High","Mid","Low"];
+var CONDITION_HINTS = {
+  "High":     "Move-in ready · kitchen + baths updated · current finishes",
+  "Mid-High": "Updated kitchen or baths (not both) · mostly current",
+  "Mid":      "Mixed updates · some original finishes",
+  "Low":      "Dated throughout · needs renovation"
+};
 
 /* ── Formatting helpers ─────────────────────────────────────────────── */
 function esc(s){var d=document.createElement("div");d.textContent=s;return d.innerHTML}
@@ -195,7 +208,7 @@ function doParse(){
   CS=[];
   for(var g=0;g<DATA.statusGroups.length;g++){var gr=DATA.statusGroups[g];
     for(var c=0;c<gr.comps.length;c++){var comp=gr.comps[c],sc=scoreComp(comp,DATA);
-      CS.push({comp:comp,status:gr.status,score:sc.score,flags:sc.flags,included:true,zone:"—"})}}
+      CS.push({comp:comp,status:gr.status,score:sc.score,flags:sc.flags,included:true,zone:"—",condition:"—",description:""})}}
   renderReview();show('s2');
 }
 
@@ -206,7 +219,11 @@ function renderReview(){
   h+='<div class="stats"><div><div class="stat-v">'+(DATA.subjectBeds||"—")+'</div><div class="stat-l">Beds</div></div>';
   h+='<div><div class="stat-v">'+(DATA.subjectBaths||"—")+'</div><div class="stat-l">Baths</div></div>';
   h+='<div><div class="stat-v">'+(DATA.subjectSqFt?DATA.subjectSqFt.toLocaleString():"—")+'</div><div class="stat-l">Sq Ft</div></div></div>';
-  h+='<div class="zone-row"><label>School Zone</label><select id="subj-zone" onchange="updateZoneScores()">';
+  h+='<div class="zone-row">';
+  h+='<label>Condition</label><select id="subj-condition" onchange="updateScores()">';
+  for(var i=0;i<CONDITION_TIERS.length;i++)h+='<option>'+CONDITION_TIERS[i]+'</option>';
+  h+='</select>';
+  h+='<label>School Zone</label><select id="subj-zone" onchange="updateScores()">';
   for(var i=0;i<DISTRICTS.length;i++)h+='<option>'+DISTRICTS[i]+'</option>';
   h+='</select>';
   h+='<button class="btn-detect" onclick="autoDetectZones()">&#9672; Auto-Detect All Zones</button>';
@@ -226,6 +243,12 @@ function renderCompList(){
     h+='<div class="cc-fw">'+(c.price?fmt(c.price):"—")+'</div><div class="cc-dim">'+(c.statusDt||"—")+'</div><div>'+(c.dom!=null?c.dom:"—")+'</div></div>';
     h+='<div style="display:flex;align-items:center;gap:8px"><div class="score '+scCls+'">'+cs.score+'</div></div></div>';
     if(cs.flags.length){h+='<div class="flags">';for(var f=0;f<cs.flags.length;f++)h+='<span class="flag flag-'+cs.flags[f].c+'">'+cs.flags[f].t+'</span>';h+='</div>'}
+    h+='<div class="cc-cond"><label>Condition:</label><select onchange="setCondition('+i+',this.value)">';
+    for(var t=0;t<CONDITION_TIERS.length;t++)h+='<option'+(cs.condition===CONDITION_TIERS[t]?" selected":"")+'>'+CONDITION_TIERS[t]+'</option>';
+    h+='</select>';
+    var hint=cs.condition&&CONDITION_HINTS[cs.condition]?CONDITION_HINTS[cs.condition]:"Optional notes (e.g., updated kitchen, original baths)";
+    h+='<input type="text" maxlength="200" placeholder="'+esc(hint)+'" value="'+esc(cs.description||"")+'" oninput="setDescription('+i+',this.value)">';
+    h+='</div>';
     h+='<div class="cc-zone"><label>School Zone:</label><select onchange="setZone('+i+',this.value)">';
     for(var z=0;z<DISTRICTS.length;z++)h+='<option'+(cs.zone===DISTRICTS[z]?" selected":"")+'>'+DISTRICTS[z]+'</option>';
     if(cs.zone!=="—"&&DISTRICTS.indexOf(cs.zone)===-1)h+='<option selected>'+esc(cs.zone)+'</option>';
@@ -239,35 +262,57 @@ function renderSummary(){
   var zm=0,subjZone=document.getElementById("subj-zone")?document.getElementById("subj-zone").value:"—";
   for(var i=0;i<CS.length;i++){if(CS[i].included&&CS[i].zone!=="—"&&subjZone!=="—"&&CS[i].zone!==subjZone)zm++}
   if(zm>0)h+=' &middot; <span style="color:var(--red);font-weight:600">'+zm+' in different school zone</span>';
+  var unrated=inc.filter(function(c){return !c.condition||c.condition==="—"}).length;
+  if(unrated>0)h+=' &middot; <span style="color:var(--gray-text)">'+unrated+' without condition rating</span>';
   h+='</div><button class="btn btn-navy" onclick="doGenerate()">Generate Report &rarr;</button></div>';
   document.getElementById("rev-summary-wrap").innerHTML=h;
 }
 
 function toggleComp(i,ch){CS[i].included=ch;var el=document.getElementById("cc-"+i);if(ch)el.classList.remove("excluded");else el.classList.add("excluded");renderSummary()}
-function setZone(i,v){CS[i].zone=v;updateZoneScores()}
+function setZone(i,v){CS[i].zone=v;updateScores()}
+function setCondition(i,v){CS[i].condition=v;updateScores()}
+/* Description updates shouldn't trigger a full re-render — that would steal
+ * focus from the input mid-typing. Just persist the value. */
+function setDescription(i,v){CS[i].description=v}
 
-/* School-zone match contributes the final 25 of the 100 total score. */
-function updateZoneScores(){
-  var subjZone=document.getElementById("subj-zone").value;
-  for(var i=0;i<CS.length;i++){var cs=CS[i];
-    cs.flags=cs.flags.filter(function(f){return f.t.indexOf("School")===-1&&f.t.indexOf("school")===-1});
-    var base=scoreComp(cs.comp,DATA),bonus=0;
+/* Recompute every comp's score from its base property score plus modifiers
+ * for school-zone match (±25) and condition match (±5). Clamped to [0, 100]. */
+function updateScores(){
+  var sZ=document.getElementById("subj-zone"),sC=document.getElementById("subj-condition");
+  var subjZone=sZ?sZ.value:"—",subjCond=sC?sC.value:"—";
+  for(var i=0;i<CS.length;i++){
+    var cs=CS[i];
+    var base=scoreComp(cs.comp,DATA);
+    var mod=0;
+    var extra=[];
+    // School zone — 25 of the 100 budget
     if(subjZone!=="—"&&cs.zone!=="—"){
-      if(cs.zone===subjZone){bonus=25;cs.flags.push({t:"School zone match",c:"g"})}
-      else{cs.flags.push({t:"Different school zone",c:"r"})}
+      if(cs.zone===subjZone){mod+=25;extra.push({t:"School zone match",c:"g"})}
+      else{extra.push({t:"Different school zone",c:"r"})}
     }
-    cs.score=Math.min(base.score+bonus,100);
-    cs.flags=base.flags.concat(cs.flags.filter(function(f){return f.t.indexOf("School")!==-1||f.t.indexOf("school")!==-1}))
+    // Condition — ±5 modifier
+    if(subjCond!=="—"&&cs.condition&&cs.condition!=="—"){
+      var diff=Math.abs(CONDITION_TIERS.indexOf(cs.condition)-CONDITION_TIERS.indexOf(subjCond));
+      if(diff===0){mod+=5;extra.push({t:"Condition match",c:"g"})}
+      else if(diff===2){mod-=3;extra.push({t:"Condition 2 tiers off",c:"y"})}
+      else if(diff>=3){mod-=5;extra.push({t:"Condition mismatch",c:"r"})}
+      // diff===1 is normal — no flag, no penalty
+    }
+    cs.score=Math.max(0,Math.min(base.score+mod,100));
+    cs.flags=base.flags.concat(extra);
   }
   renderCompList();
 }
+/* Backward-compat alias for older inline handlers. */
+function updateZoneScores(){updateScores()}
 
 /* ── Report generation ──────────────────────────────────────────────── */
 function doGenerate(){
   var inc=CS.filter(function(c){return c.included});if(!inc.length){alert("Select at least one comp.");return}
+  // Group by status, preserving the full CS entry (so condition + description ride along).
   var gMap={},seen={},fGroups=[];
-  for(var i=0;i<inc.length;i++){var st=inc[i].status;if(!gMap[st])gMap[st]=[];gMap[st].push(inc[i].comp)}
-  for(var i=0;i<CS.length;i++){var st=CS[i].status;if(!seen[st]&&gMap[st]){fGroups.push({status:st,comps:gMap[st]});seen[st]=true}}
+  for(var i=0;i<inc.length;i++){var st=inc[i].status;if(!gMap[st])gMap[st]=[];gMap[st].push(inc[i])}
+  for(var i=0;i<CS.length;i++){var st=CS[i].status;if(!seen[st]&&gMap[st]){fGroups.push({status:st,entries:gMap[st]});seen[st]=true}}
   var name=document.getElementById("f-name").value||"Alan Wang",brok=document.getElementById("f-brok").value||"KW Elevate";
   var phone=document.getElementById("f-phone").value||"",lic=document.getElementById("f-lic").value||"";
   var sp=document.getElementById("f-price").value||"",sn=document.getElementById("f-notes").value||"";
@@ -280,8 +325,13 @@ function doGenerate(){
     ["Address","MLS#","Sub Type","SqFt Tot","Beds","Baths","L/S Price","Status Dt","DOM"].forEach(function(c,i){h+='<th'+(i<=2?' class="l"':'')+'>'+c+'</th>'});
     h+='</tr></thead><tbody><tr class="subj-row"><td><span class="subj-dot"></span>'+esc((DATA.subjectAddress||"Subject").split(",")[0])+'</td><td></td><td class="l">'+(DATA.subjectCode||"")+'</td><td>'+(DATA.subjectSqFt?DATA.subjectSqFt.toLocaleString():"—")+'</td><td>'+(DATA.subjectBeds||"—")+'</td><td>'+(DATA.subjectBaths||"—")+'</td><td colspan="3"></td></tr>';
     var sS=0,cS=0,sB=0,cB=0,sP=0,cP=0,sD=0,cD=0;
-    for(var c=0;c<gr.comps.length;c++){var comp=gr.comps[c];
-      h+='<tr><td>'+addrLinks(comp.address)+'</td><td class="mls">'+esc(comp.mls)+'</td><td class="l dim">'+esc(comp.subType)+'</td><td>'+(comp.sqft?comp.sqft.toLocaleString():"—")+'</td><td>'+(comp.beds||"—")+'</td><td>'+(comp.baths||"—")+'</td><td class="fw">'+(comp.price?fmt(comp.price):"—")+'</td><td class="dim">'+(comp.statusDt||"—")+'</td><td>'+(comp.dom!=null?comp.dom:"—")+'</td></tr>';
+    for(var c=0;c<gr.entries.length;c++){var entry=gr.entries[c],comp=entry.comp;
+      var cellExtras="";
+      if(entry.condition&&entry.condition!=="—"){
+        cellExtras+='<span class="cond-badge cond-'+entry.condition.toLowerCase().replace(/[^a-z]/g,"")+'">'+esc(entry.condition)+'</span>';
+      }
+      if(entry.description){cellExtras+='<span class="cond-desc">'+esc(entry.description)+'</span>'}
+      h+='<tr><td>'+addrLinks(comp.address)+cellExtras+'</td><td class="mls">'+esc(comp.mls)+'</td><td class="l dim">'+esc(comp.subType)+'</td><td>'+(comp.sqft?comp.sqft.toLocaleString():"—")+'</td><td>'+(comp.beds||"—")+'</td><td>'+(comp.baths||"—")+'</td><td class="fw">'+(comp.price?fmt(comp.price):"—")+'</td><td class="dim">'+(comp.statusDt||"—")+'</td><td>'+(comp.dom!=null?comp.dom:"—")+'</td></tr>';
       if(comp.sqft){sS+=comp.sqft;cS++}if(comp.beds){sB+=parseInt(comp.beds);cB++}if(comp.price){sP+=comp.price;cP++}if(comp.dom!=null){sD+=comp.dom;cD++}}
     h+='<tr class="avg-row"><td colspan="3" style="text-align:right;padding-right:10px">Average</td><td>'+(cS?Math.round(sS/cS).toLocaleString():"—")+'</td><td>'+(cB?Math.round(sB/cB):"—")+'</td><td></td><td class="fw">'+(cP?fmt(Math.round(sP/cP)):"—")+'</td><td></td><td>'+(cD?Math.round(sD/cD):"—")+'</td></tr></tbody></table>'}
   // Summary
@@ -290,9 +340,9 @@ function doGenerate(){
   h+='</tr></thead><tbody>';
   var aP=[],aPsf=[],aD=[];
   for(var g=0;g<fGroups.length;g++){var gr=fGroups[g],pr=[],ps=[],dm=[];
-    for(var c=0;c<gr.comps.length;c++){if(gr.comps[c].price){pr.push(gr.comps[c].price);aP.push(gr.comps[c].price)}if(gr.comps[c].price&&gr.comps[c].sqft){var v=gr.comps[c].price/gr.comps[c].sqft;ps.push(v);aPsf.push(v)}if(gr.comps[c].dom!=null){dm.push(gr.comps[c].dom);aD.push(gr.comps[c].dom)}}
+    for(var c=0;c<gr.entries.length;c++){var comp=gr.entries[c].comp;if(comp.price){pr.push(comp.price);aP.push(comp.price)}if(comp.price&&comp.sqft){var v=comp.price/comp.sqft;ps.push(v);aPsf.push(v)}if(comp.dom!=null){dm.push(comp.dom);aD.push(comp.dom)}}
     var ap=pr.length?pr.reduce(function(a,b){return a+b},0)/pr.length:0;
-    h+='<tr><td>'+esc(gr.status)+'</td><td>'+gr.comps.length+'</td><td class="fw">'+fmt(Math.round(ap))+'</td><td>'+fmtD(ps.length?ps.reduce(function(a,b){return a+b},0)/ps.length:0)+'</td><td>'+fmt(med(pr))+'</td><td>'+fmt(pr.length?Math.min.apply(null,pr):0)+'</td><td>'+fmt(pr.length?Math.max.apply(null,pr):0)+'</td><td>'+(dm.length?Math.round(dm.reduce(function(a,b){return a+b},0)/dm.length):"—")+'</td></tr>'}
+    h+='<tr><td>'+esc(gr.status)+'</td><td>'+gr.entries.length+'</td><td class="fw">'+fmt(Math.round(ap))+'</td><td>'+fmtD(ps.length?ps.reduce(function(a,b){return a+b},0)/ps.length:0)+'</td><td>'+fmt(med(pr))+'</td><td>'+fmt(pr.length?Math.min.apply(null,pr):0)+'</td><td>'+fmt(pr.length?Math.max.apply(null,pr):0)+'</td><td>'+(dm.length?Math.round(dm.reduce(function(a,b){return a+b},0)/dm.length):"—")+'</td></tr>'}
   var tAp=aP.length?aP.reduce(function(a,b){return a+b},0)/aP.length:0;
   h+='<tr class="total-row"><td>Total</td><td>'+aP.length+'</td><td>'+fmt(Math.round(tAp))+'</td><td>'+fmtD(aPsf.length?aPsf.reduce(function(a,b){return a+b},0)/aPsf.length:0)+'</td><td>'+fmt(med(aP))+'</td><td>'+fmt(aP.length?Math.min.apply(null,aP):0)+'</td><td>'+fmt(aP.length?Math.max.apply(null,aP):0)+'</td><td>'+(aD.length?Math.round(aD.reduce(function(a,b){return a+b},0)/aD.length):"—")+'</td></tr></tbody></table></div></div>';
   h+='<div class="rpt-foot"><div><div class="agent-lbl">Researched and prepared by</div><div class="agent-name">'+esc(name)+'</div><div class="agent-info">'+esc(brok);

@@ -100,6 +100,53 @@
   // sqft 1900 vs 1480 = 28.4% (within 30%): 8 → 25+20+8+5 = 58
   assertEq("sqft within 30% partial = 58", sqftWithin30.score, 58);
 
+  // ── Condition modifier (±5 on top of TJ's 100) ────────────────────
+  group("Condition modifier (Alan's rating)");
+  DATA = {subjectAddress:"199 Oak Park, Cupertino", subjectBeds:"2", subjectBaths:"2/0", subjectSqFt:1480};
+  // Build a fake CS + subject DOM to exercise updateScores().
+  function setupConditionTest(subjCond, comps){
+    CS = comps.map(function(c){
+      return {comp:{beds:c.beds||"2",baths:c.baths||"2/0",sqft:c.sqft||1480,dom:c.dom!=null?c.dom:10},
+              status:"Sold",included:true,zone:"—",
+              condition:c.condition||"—",description:"",
+              score:0,flags:[]};
+    });
+    // Stub the subj-zone + subj-condition selects + result containers.
+    var host=document.createElement("div");host.style.display="none";
+    host.innerHTML='<select id="subj-zone"><option>—</option></select>'+
+                   '<select id="subj-condition"><option>'+subjCond+'</option></select>'+
+                   '<div id="comp-list"></div><div id="rev-summary-wrap"></div>';
+    document.body.appendChild(host);
+    updateScores();
+    document.body.removeChild(host);
+  }
+
+  // Perfect property match + condition match → +5 → clamped 100 floor doesn't matter, 75+5=80
+  setupConditionTest("High", [{condition:"High"}]);
+  assertEq("perfect + High↔High = 80",          CS[0].score, 80);
+
+  // Perfect property + 1 tier off → no modifier → 75
+  setupConditionTest("High", [{condition:"Mid-High"}]);
+  assertEq("perfect + 1 tier off = 75",         CS[0].score, 75);
+
+  // Perfect property + 2 tiers off → -3 → 72
+  setupConditionTest("High", [{condition:"Mid"}]);
+  assertEq("perfect + 2 tiers off = 72",        CS[0].score, 72);
+
+  // Perfect property + 3 tiers (High↔Low) → -5 → 70
+  setupConditionTest("High", [{condition:"Low"}]);
+  assertEq("perfect + High↔Low = 70",           CS[0].score, 70);
+
+  // Either side unrated → no modifier → 75
+  setupConditionTest("—", [{condition:"High"}]);
+  assertEq("subject unrated → no modifier",     CS[0].score, 75);
+  setupConditionTest("High", [{condition:"—"}]);
+  assertEq("comp unrated → no modifier",        CS[0].score, 75);
+
+  // Score floors at 0 (can't go negative even with mismatch on weak property)
+  setupConditionTest("High", [{condition:"Low", beds:"5", baths:"5/0", sqft:5000, dom:300}]);
+  assertEq("can't go below 0",                  CS[0].score, 0);
+
   // ── Parser ────────────────────────────────────────────────────────
   group("parse — MLSListings PDF text");
   var sample = [

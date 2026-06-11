@@ -63,9 +63,12 @@
   .score.hi{background:var(--green-bg);color:var(--green)}.score.md{background:var(--yellow-bg);color:var(--yellow)}.score.lo{background:var(--red-bg);color:var(--red)}
   .flags{display:flex;gap:4px;flex-wrap:wrap;padding:4px 14px 8px 62px}
   .flag{font-size:10px;padding:2px 7px;border-radius:3px;font-weight:600}.flag-r{background:var(--red-bg);color:var(--red)}.flag-y{background:var(--yellow-bg);color:var(--yellow)}.flag-g{background:var(--green-bg);color:var(--green)}.flag-b{background:var(--blue-bg);color:#2563a8}
-  .cc-zone{padding:4px 14px 10px 62px;display:flex;align-items:center;gap:8px}
-  .cc-zone label{font-size:10px;font-weight:600;color:var(--gray-text);letter-spacing:.04em;text-transform:uppercase;white-space:nowrap}
-  .cc-zone select{padding:4px 8px;border:1px solid var(--gray-border);border-radius:4px;font-size:11.5px;font-family:var(--font);outline:none;max-width:260px}
+  .cc-zone,.cc-cond{padding:4px 14px 4px 62px;display:flex;align-items:center;gap:8px}
+  .cc-zone{padding-bottom:10px}
+  .cc-zone label,.cc-cond label{font-size:10px;font-weight:600;color:var(--gray-text);letter-spacing:.04em;text-transform:uppercase;white-space:nowrap}
+  .cc-zone select,.cc-cond select{padding:4px 8px;border:1px solid var(--gray-border);border-radius:4px;font-size:11.5px;font-family:var(--font);outline:none;max-width:260px}
+  .cc-cond input{flex:1;padding:4px 8px;border:1px solid var(--gray-border);border-radius:4px;font-size:11.5px;font-family:var(--font);outline:none;min-width:0}
+  .cc-cond input:focus{border-color:var(--gold);box-shadow:0 0 0 2px rgba(205,31,63,.10)}
   .rev-summary{background:var(--off-white);border:1px solid var(--gray-border);border-radius:6px;padding:14px 18px;margin-top:14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
   .rev-summary .left{font-size:13px}.rev-summary .left b{color:var(--navy)}
 
@@ -94,6 +97,13 @@
   .ct .subj-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--gold);margin-right:5px;vertical-align:middle}
   .ct .avg-row{background:var(--off-white);border-top:1.5px solid var(--gray-border)}.ct .avg-row td{font-weight:700;font-size:11px;color:var(--navy)}
   .ct .mls{font-family:var(--mono);font-size:10.5px;color:var(--gray-text)}.ct .dim{color:var(--gray-text);font-size:11px}.ct .fw{font-weight:600}
+  /* Condition badge + description, shown in report comp cells under the address. */
+  .cond-badge{display:inline-block;font-size:8.5px;font-weight:700;letter-spacing:.06em;padding:1px 6px;border-radius:3px;text-transform:uppercase;margin-left:6px;vertical-align:1px}
+  .cond-badge.cond-high   {background:#dcfce7;color:#065f46}
+  .cond-badge.cond-midhigh{background:#ecfccb;color:#3f6212}
+  .cond-badge.cond-mid    {background:#fef3c7;color:#92400e}
+  .cond-badge.cond-low    {background:#fdecea;color:#a8231b}
+  .cond-desc{display:block;font-size:10px;color:var(--gray-text);font-style:italic;margin-top:3px;line-height:1.35;font-weight:400}
   /* Listing-source links — address text → Zillow, small "RF" pill → Redfin. */
   a.addr-link{color:inherit;text-decoration:none;border-bottom:1px dotted var(--gold);transition:color .12s,border-color .12s}
   a.addr-link:hover{color:var(--gold);border-bottom-color:currentColor}
@@ -143,7 +153,7 @@
     <div class="leg-item"><span class="leg-dot" style="background:var(--green)"></span> Strong (70+)</div>
     <div class="leg-item"><span class="leg-dot" style="background:var(--yellow)"></span> Fair (40–69)</div>
     <div class="leg-item"><span class="leg-dot" style="background:var(--red)"></span> Weak (&lt;40)</div>
-    <div class="leg-item" style="margin-left:auto;color:#9ca3af;font-size:10.5px">Weights · Beds 25 · Baths 20 · SqFt 25 · DOM 5 · School Zone 25</div>
+    <div class="leg-item" style="margin-left:auto;color:#9ca3af;font-size:10.5px">Weights · Beds 25 · Baths 20 · SqFt 25 · DOM 5 · School Zone 25 · Condition ±5</div>
   </div>
   <div class="col-hdrs"><div></div><div class="inner"><span>Address</span><span>Sq Ft</span><span>Beds</span><span>Baths</span><span>Price</span><span>Date</span><span>DOM</span></div><div style="width:42px">Score</div></div>
   <div id="comp-list"></div>

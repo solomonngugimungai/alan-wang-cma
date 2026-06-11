@@ -1,5 +1,18 @@
 # Changelog
 
+## v1.3.0 — 2026-06-11
+
+- **Condition rating per comp** (Alan's request). Four tiers, each with a tooltip hint:
+  - **High** — Move-in ready · kitchen + baths updated · current finishes
+  - **Mid-High** — Updated kitchen or baths (not both) · mostly current
+  - **Mid** — Mixed updates · some original finishes
+  - **Low** — Dated throughout · needs renovation
+- **Optional description per comp** (free-form, up to 200 chars) — surfaces directly under the address in the generated report.
+- **Subject also gets a condition rating** (next to the school zone selector).
+- **Scoring modifier**: ±5 layered on top of TJ's 100, clamped to `[0, 100]`. Exact match = +5, 1 tier off = 0 (no flag), 2 tiers = −3, 3 tiers (e.g. High↔Low) = −5.
+- **Review-screen summary** now also surfaces how many included comps lack a condition rating, so agents don't ship a CMA half-rated.
+- Tests added for every condition modifier branch.
+
 ## v1.2.0 — 2026-06-11
 
 - **Scoring weights updated per TJ Hufanga** (total = 100):
