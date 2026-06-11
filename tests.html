@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>CMA Test Suite</title>
+<style>
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;padding:30px;background:#fafafa;color:#1a1a1a;max-width:900px;margin:0 auto}
+  h1{font-size:22px;margin-bottom:4px;color:#cd1f3f}
+  .meta{color:#6b7280;font-size:12px;margin-bottom:20px}
+  .test{padding:6px 12px;margin:3px 0;border-radius:4px;font-family:"SF Mono",Menlo,monospace;font-size:12px;line-height:1.4}
+  .pass{background:#e7f6ee;color:#0c6b3b;border-left:3px solid #0c6b3b}
+  .fail{background:#fdecea;color:#a8231b;border-left:3px solid #a8231b}
+  .summary{margin-top:24px;padding:14px 18px;border-radius:6px;font-weight:700;font-size:14px}
+  .summary.ok{background:#e7f6ee;color:#0c6b3b}
+  .summary.bad{background:#fdecea;color:#a8231b}
+  h2{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:#6b7280;margin:18px 0 6px}
+</style>
+</head>
+<body>
+<h1>CMA Test Suite</h1>
+<div class="meta">Runs in browser. Open this file directly or via the Pages URL. Asserts the parser, scorer, formatters, and URL helpers in cma.js.</div>
+<div id="results"></div>
+<div id="summary"></div>
+
+<script src="cma.js"></script>
+<script>
+(function(){
+  var pass=0, fail=0;
+  var results=document.getElementById("results");
+
+  function group(title){
+    var h=document.createElement("h2");h.textContent=title;results.appendChild(h);
+  }
+  function record(name, ok, detail){
+    var div=document.createElement("div");
+    div.className="test "+(ok?"pass":"fail");
+    div.textContent=(ok?"✓ ":"✗ ")+name+(ok?"":" — "+(detail||""));
+    results.appendChild(div);
+    ok?pass++:fail++;
+  }
+  function assertEq(name, actual, expected){
+    record(name, actual===expected, "expected "+JSON.stringify(expected)+" got "+JSON.stringify(actual));
+  }
+  function assertTrue(name, cond, detail){record(name, !!cond, detail)}
+
+  // ── Formatters ────────────────────────────────────────────────────
+  group("Formatters");
+  assertEq("esc escapes HTML",            esc("<script>"), "&lt;script&gt;");
+  assertEq("fmt formats currency",        fmt(1395000),    "$1,395,000");
+  assertEq("fmt handles null",            fmt(null),       "—");
+  assertEq("fmt handles NaN",             fmt(NaN),        "—");
+  assertEq("fmtD has 2 decimals",         fmtD(872.5),     "$872.50");
+  assertEq("med even count",              med([1,2,3,4]),  2.5);
+  assertEq("med odd count",               med([1,2,3,4,5]),3);
+  assertEq("med empty",                   med([]),         0);
+
+  // ── URL builders ──────────────────────────────────────────────────
+  group("Address & URL helpers");
+  DATA = {subjectAddress: "199 Oak Park Lane, Cupertino, CA 95014"};
+  assertEq("fullAddr borrows city/state",  fullAddr("123 Main St"),
+                                            "123 Main St, Cupertino, CA 95014");
+  assertEq("fullAddr keeps complete",      fullAddr("123 Main St, Sunnyvale, CA"),
+                                            "123 Main St, Sunnyvale, CA");
+  var zu = zillowURL("123 Main St");
+  assertTrue("zillowURL contains address slug",
+             zu.indexOf("123-Main-St-Cupertino-CA-95014") !== -1, zu);
+  assertTrue("zillowURL is https",         zu.indexOf("https://www.zillow.com/") === 0, zu);
+  var ru = redfinURL("123 Main St");
+  assertTrue("redfinURL contains query",   ru.indexOf("redfin.com/?q=") !== -1, ru);
+
+  // ── Scoring (TJ's weights: 25/20/25/5/+25) ────────────────────────
+  group("scoreComp — TJ Hufanga weights (max 100)");
+  DATA = {subjectAddress:"199 Oak Park, Cupertino", subjectBeds:"2", subjectBaths:"2/0", subjectSqFt:1480};
+
+  var perfect = scoreComp({beds:"2", baths:"2/0", sqft:1480, dom:10}, DATA);
+  // 25 + 20 + 25 + 5 = 75 (school-zone bonus added by updateZoneScores)
+  assertEq("perfect match = 75",           perfect.score, 75);
+
+  var bedsOff = scoreComp({beds:"3", baths:"2/0", sqft:1480, dom:10}, DATA);
+  // 12 + 20 + 25 + 5 = 62
+  assertEq("beds ±1 = 62",            bedsOff.score, 62);
+
+  var bedsBathOff = scoreComp({beds:"3", baths:"3/0", sqft:1480, dom:10}, DATA);
+  // 12 + 10 + 25 + 5 = 52
+  assertEq("beds ±1, bath ±1 = 52", bedsBathOff.score, 52);
+
+  var allBad = scoreComp({beds:"4", baths:"4/0", sqft:3000, dom:200}, DATA);
+  // 0 + 0 + 0 + 0 = 0
+  assertEq("all variances exceeded = 0",   allBad.score, 0);
+
+  var mid = scoreComp({beds:"3", baths:"3/0", sqft:1700, dom:100}, DATA);
+  // beds±1: 12, bath±1: 10, sqft 1700 vs 1480 = 14.86% (within 20%): 17, dom 100 stale: 0 = 39
+  assertEq("mixed signals = 39",           mid.score, 39);
+
+  var sqftWithin10 = scoreComp({beds:"2", baths:"2/0", sqft:1500, dom:10}, DATA);
+  // 25 + 20 + 25 + 5 = 75
+  assertEq("sqft within 10% = 75",         sqftWithin10.score, 75);
+
+  var sqftWithin30 = scoreComp({beds:"2", baths:"2/0", sqft:1900, dom:10}, DATA);
+  // sqft 1900 vs 1480 = 28.4% (within 30%): 8 → 25+20+8+5 = 58
+  assertEq("sqft within 30% partial = 58", sqftWithin30.score, 58);
+
+  // ── Parser ────────────────────────────────────────────────────────
+  group("parse — MLSListings PDF text");
+  var sample = [
+    "Subject Property: 199 Oak Park Lane, Cupertino, CA 95014",
+    "Status: Sold",
+    "123 Oak Park Lane ML82000001 Res. Townhouse 1450 2 2/0 $1,320,000 4/15/26 12",
+    "145 Oak Park Lane ML82000002 Res. Townhouse 1480 2 2/0 $1,380,000 3/22/26 9",
+    "Status: Active",
+    "412 Birch Way ML82000003 Res. Townhouse 1490 2 2/0 $1,450,000 5/1/26 34"
+  ].join("\n");
+  var d = parse(sample);
+
+  assertEq("subject address parsed",       d.subjectAddress,
+                                            "199 Oak Park Lane, Cupertino, CA 95014");
+  assertEq("two status groups",            d.statusGroups.length, 2);
+  assertEq("first group is Sold",          d.statusGroups[0].status, "Sold");
+  assertEq("Sold has 2 comps",             d.statusGroups[0].comps.length, 2);
+  assertEq("Active has 1 comp",            d.statusGroups[1].comps.length, 1);
+  assertEq("first sold price = 1320000",   d.statusGroups[0].comps[0].price, 1320000);
+  assertEq("first sold MLS = ML82000001",  d.statusGroups[0].comps[0].mls, "ML82000001");
+  assertEq("first sold DOM = 12",          d.statusGroups[0].comps[0].dom, 12);
+
+  // ── Summary ───────────────────────────────────────────────────────
+  var summary = document.getElementById("summary");
+  var ok = fail===0;
+  summary.className = "summary " + (ok?"ok":"bad");
+  summary.textContent = (ok ? "✓ All passing — " : "✗ ")
+    + pass + " passed, " + fail + " failed. CMA v" + (typeof VERSION!=="undefined"?VERSION:"?");
+  // Expose for CI scrapers
+  window.__TEST_RESULTS__ = {pass: pass, fail: fail};
+})();
+</script>
+</body>
+</html>

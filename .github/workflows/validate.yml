@@ -1,0 +1,55 @@
+name: Validate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Structural checks
+        run: |
+          set -e
+          test -f index.html || (echo "index.html missing"; exit 1)
+          test -f cma.js     || (echo "cma.js missing"; exit 1)
+          test -f tests.html || (echo "tests.html missing"; exit 1)
+
+          # Core functions live in cma.js
+          grep -q "function parse"          cma.js
+          grep -q "function scoreComp"      cma.js
+          grep -q "function downloadReport" cma.js
+          grep -q "VERSION ="               cma.js
+
+          # index.html links cma.js
+          grep -q 'script src="cma.js"'     index.html
+
+          echo "✓ structural checks passed"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Run browser tests with Playwright
+        run: |
+          npm init -y >/dev/null
+          npm install --silent --no-fund --no-audit playwright
+          npx playwright install --with-deps chromium
+          node -e '
+            const { chromium } = require("playwright");
+            (async () => {
+              const browser = await chromium.launch();
+              const page = await browser.newPage();
+              page.on("console", m => console.log("[browser]", m.text()));
+              await page.goto("file://" + process.cwd() + "/tests.html");
+              await page.waitForFunction(() => window.__TEST_RESULTS__, { timeout: 10000 });
+              const r = await page.evaluate(() => window.__TEST_RESULTS__);
+              console.log(`passed: ${r.pass}, failed: ${r.fail}`);
+              await browser.close();
+              process.exit(r.fail === 0 ? 0 : 1);
+            })().catch(e => { console.error(e); process.exit(1); });
+          '
