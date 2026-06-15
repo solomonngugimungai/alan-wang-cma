@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.5.0 — 2026-06-11
+
+- **Quick-select toolbar** above the comp list with three bulk actions:
+  - **Strong only (70+)** — checks every comp scored 70 or higher, unchecks the rest. The default workflow Alan asked for.
+  - **All** — checks every comp.
+  - **Clear** — unchecks every comp (reset to nothing).
+- Selection updates are one-shot; further score changes (condition or zone edits) don't auto-reapply. Click the button again after re-rating to refresh.
+
 ## v1.4.0 — 2026-06-11
 
 Pulled in features from the MLSListings "Residential Summary" reference Alan shared.

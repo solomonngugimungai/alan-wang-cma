@@ -45,6 +45,13 @@
   .btn-detect:hover{background:var(--gold)}
   #detect-status{font-size:11px;color:rgba(255,255,255,.7);margin-left:4px}
 
+  /* Quick-select toolbar — bulk-apply selection by score tier. */
+  .quick-actions{display:flex;align-items:center;gap:8px;margin:8px 0 12px;flex-wrap:wrap}
+  .qa-label{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--gray-text);margin-right:2px}
+  .qa-btn{padding:5px 12px;border:1px solid var(--gray-border);background:#fff;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;color:var(--text);font-family:var(--font);transition:border-color .12s,color .12s,background .12s}
+  .qa-btn:hover{border-color:var(--gold);color:var(--gold)}
+  .qa-btn.qa-primary{background:var(--gold);color:#fff;border-color:var(--gold)}
+  .qa-btn.qa-primary:hover{background:var(--gold-light);border-color:var(--gold-light);color:#fff}
   .legend{display:flex;gap:16px;margin-bottom:10px;flex-wrap:wrap}
   .leg-item{display:flex;align-items:center;gap:4px;font-size:11px;color:var(--gray-text)}
   .leg-dot{width:10px;height:10px;border-radius:50%;display:inline-block}
@@ -162,6 +169,12 @@
     <button class="btn btn-navy" style="padding:8px 12px;font-size:12px;background:var(--gray-text)" onclick="show('s1')">&#8592; Back</button>
   </div>
   <div id="subj-card-wrap"></div>
+  <div class="quick-actions">
+    <span class="qa-label">Quick select</span>
+    <button class="qa-btn qa-primary" onclick="selectStrongOnly()">Strong only (70+)</button>
+    <button class="qa-btn" onclick="selectAll()">All</button>
+    <button class="qa-btn" onclick="clearSelection()">Clear</button>
+  </div>
   <div class="legend">
     <div class="leg-item"><span class="leg-dot" style="background:var(--green)"></span> Strong (70+)</div>
     <div class="leg-item"><span class="leg-dot" style="background:var(--yellow)"></span> Fair (40–69)</div>

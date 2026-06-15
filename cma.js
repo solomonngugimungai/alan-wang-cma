@@ -14,7 +14,7 @@
  *   2 tiers off     -3
  *   3 tiers off     -5
  */
-var VERSION = "1.4.0";
+var VERSION = "1.5.0";
 var DATA = null, CS = [];
 var DISTRICTS = ["—","Cupertino Union SD","Sunnyvale SD","Santa Clara Unified","Fremont Union HSD","Mountain View Whisman SD","Los Altos SD","Campbell Union SD","San Jose Unified","Milpitas Unified","Palo Alto Unified","Other"];
 var CONDITION_TIERS = ["—","High","Mid-High","Mid","Low"];
@@ -279,6 +279,20 @@ function renderSummary(){
 
 function toggleComp(i,ch){CS[i].included=ch;var el=document.getElementById("cc-"+i);if(ch)el.classList.remove("excluded");else el.classList.add("excluded");renderSummary()}
 function setZone(i,v){CS[i].zone=v;updateScores()}
+
+/* Bulk selection helpers — wired to the "Quick select" toolbar in S2. */
+function selectStrongOnly(){
+  for(var i=0;i<CS.length;i++)CS[i].included=(CS[i].score>=70);
+  renderCompList();
+}
+function selectAll(){
+  for(var i=0;i<CS.length;i++)CS[i].included=true;
+  renderCompList();
+}
+function clearSelection(){
+  for(var i=0;i<CS.length;i++)CS[i].included=false;
+  renderCompList();
+}
 function setCondition(i,v){CS[i].condition=v;updateScores()}
 /* Description updates shouldn't trigger a full re-render — that would steal
  * focus from the input mid-typing. Just persist the value. */
