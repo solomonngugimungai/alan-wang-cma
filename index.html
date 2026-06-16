@@ -4,6 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>CMA Report Generator</title>
+<!-- Leaflet (map) + Leaflet.draw — free, no API key, OpenStreetMap tiles. -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+<link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
 <style>
   /* Keller Williams palette: charcoal/black primary, KW brand red accent, generous white space. */
   :root{--navy:#1a1a1a;--navy-dark:#000000;--gold:#cd1f3f;--gold-light:#e23052;--off-white:#fafafa;--gray-border:#e5e5e5;--gray-text:#6b7280;--gray-light:#f3f4f6;--text:#1a1a1a;--green:#0c6b3b;--green-bg:#e7f6ee;--yellow:#92400e;--yellow-bg:#fef3c7;--red:#a8231b;--red-bg:#fdecea;--blue-bg:#eef3fb;--font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;--mono:"SF Mono","Fira Mono","Roboto Mono",Menlo,monospace}
@@ -53,6 +58,31 @@
   .btn-settings:hover{background:rgba(255,255,255,.08);border-color:#fff}
   #detect-status{font-size:11px;color:rgba(255,255,255,.7);margin-left:4px}
 
+  /* Comp map — Leaflet + OSM, drawing tools for dividers / boundaries. */
+  .map-section{margin:8px 0 14px;border:1px solid var(--gray-border);border-radius:6px;overflow:hidden;background:#fff}
+  .map-section.collapsed #map{display:none}
+  .map-header{display:flex;justify-content:space-between;align-items:center;padding:8px 14px;background:#fafafa;border-bottom:1px solid var(--gray-border);flex-wrap:wrap;gap:8px}
+  .map-title{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--gold)}
+  .map-hint{font-weight:400;color:var(--gray-text);text-transform:none;letter-spacing:.02em;margin-left:6px}
+  .map-controls{display:flex;align-items:center;gap:8px}
+  .geo-status{font-size:10.5px;color:var(--gray-text);font-style:italic}
+  #map{height:380px;width:100%;background:#e7eaec;z-index:0}
+  /* Custom Leaflet div-icon pins. */
+  .map-pin{background:var(--navy);color:#fff;border-radius:50%;display:flex !important;align-items:center;justify-content:center;font-size:11px;font-weight:700;box-shadow:0 1px 4px rgba(0,0,0,.35);border:2px solid #fff;font-family:var(--font);line-height:1}
+  .map-pin-subject{background:var(--gold);border-width:3px;font-size:13px;width:30px !important;height:30px !important;margin-left:-15px !important;margin-top:-15px !important;z-index:1000 !important}
+  .map-pin-sold{background:#0c6b3b}
+  .map-pin-pending{background:#92400e}
+  .map-pin-active{background:#4b5563}
+  .map-pin-inactive{background:#a8231b;opacity:.7}
+  .map-pin.excluded{opacity:.35;filter:grayscale(1)}
+  .map-popup{font-family:var(--font);font-size:12px;min-width:180px;line-height:1.45}
+  .map-popup b{color:var(--navy)}
+  .map-popup .pop-row{display:flex;justify-content:space-between;gap:8px;margin-top:3px}
+  .map-popup .pop-row span:first-child{color:var(--gray-text);font-size:10.5px;text-transform:uppercase;letter-spacing:.04em}
+  .map-popup .pop-row b{font-variant-numeric:tabular-nums}
+  .comp-card.highlight{outline:3px solid var(--gold);outline-offset:-3px;box-shadow:0 0 0 4px rgba(205,31,63,.12)}
+  /* Leaflet's own draw control styling tweaks (subtle). */
+  .leaflet-draw-toolbar a{background-color:#fff;color:var(--navy) !important}
   /* Quick-select toolbar — bulk-apply selection by score tier. */
   .quick-actions{display:flex;align-items:center;gap:8px;margin:8px 0 12px;flex-wrap:wrap}
   .qa-label{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--gray-text);margin-right:2px}
@@ -233,6 +263,17 @@
     <button class="btn btn-navy" style="padding:8px 12px;font-size:12px;background:var(--gray-text)" onclick="show('s1')">&#8592; Back</button>
   </div>
   <div id="subj-card-wrap"></div>
+  <div class="map-section" id="map-section">
+    <div class="map-header">
+      <div class="map-title">Comp Map <span class="map-hint">click pin ⇄ comp · use the toolbox to draw dividers / area boundaries</span></div>
+      <div class="map-controls">
+        <span id="geo-status" class="geo-status"></span>
+        <button class="qa-btn" onclick="clearMapDrawings()">Clear drawings</button>
+        <button class="qa-btn" onclick="toggleMap()" id="map-toggle">Hide map</button>
+      </div>
+    </div>
+    <div id="map"></div>
+  </div>
   <div class="quick-actions">
     <span class="qa-label">Quick select</span>
     <button class="qa-btn qa-primary" onclick="selectStrongOnly()">Strong only (70+)</button>

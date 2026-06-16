@@ -19,7 +19,7 @@
  *                        value comps (Sold + Pending/Contingent only).
  *    Supported range   = min..max of those same adjusted values.
  */
-var VERSION = "2.0.0";
+var VERSION = "2.1.0";
 var DATA = null, CS = [];
 var DISTRICTS = ["—","Cupertino Union SD","Sunnyvale SD","Santa Clara Unified","Fremont Union HSD","Mountain View Whisman SD","Los Altos SD","Campbell Union SD","San Jose Unified","Milpitas Unified","Palo Alto Unified","Other"];
 
@@ -276,6 +276,18 @@ function doParse(){
         adjustedValue:null, weight:0, valueIncluded:false, exclusionReason:null
       })}}
   renderReview();show('s2');
+  // Map needs the container visible to compute its size, so init AFTER show().
+  initMap();
+}
+
+/* Refresh pin styling without re-geocoding (called from toggleComp + selection helpers). */
+function refreshMapPins(){
+  if(!MAP)return;
+  for(var i=0;i<MAP_MARKERS.length;i++){
+    if(!MAP_MARKERS[i]||!CS[i])continue;
+    MAP_MARKERS[i].setIcon(compIcon(CS[i]));
+    MAP_MARKERS[i].setPopupContent(buildMapPopup(CS[i],i));
+  }
 }
 
 function renderReview(){
@@ -409,21 +421,21 @@ function marketRead(){
   return{label:"Balanced",detail:sold+" sold, "+fail+" expired/cancelled"};
 }
 
-function toggleComp(i,ch){CS[i].included=ch;var el=document.getElementById("cc-"+i);if(ch)el.classList.remove("excluded");else el.classList.add("excluded");renderSummary()}
+function toggleComp(i,ch){CS[i].included=ch;var el=document.getElementById("cc-"+i);if(ch)el.classList.remove("excluded");else el.classList.add("excluded");renderSummary();refreshMapPins()}
 function setZone(i,v){CS[i].zone=v;updateScores()}
 
 /* Bulk selection helpers — wired to the "Quick select" toolbar in S2. */
 function selectStrongOnly(){
   for(var i=0;i<CS.length;i++)CS[i].included=(CS[i].score>=70);
-  renderCompList();
+  renderCompList();refreshMapPins();
 }
 function selectAll(){
   for(var i=0;i<CS.length;i++)CS[i].included=true;
-  renderCompList();
+  renderCompList();refreshMapPins();
 }
 function clearSelection(){
   for(var i=0;i<CS.length;i++)CS[i].included=false;
-  renderCompList();
+  renderCompList();refreshMapPins();
 }
 function setCondition(i,v){CS[i].condition=v;updateScores()}
 /* Description updates shouldn't trigger a full re-render — that would steal
@@ -553,7 +565,7 @@ function updateScores(){
       }
     }
   }
-  renderCompList();
+  renderCompList();refreshMapPins();
 }
 /* Backward-compat alias for older inline handlers. */
 function updateZoneScores(){updateScores()}
@@ -732,6 +744,165 @@ function downloadReport(){
   a.href=url;a.download=fname;document.body.appendChild(a);a.click();
   document.body.removeChild(a);
   setTimeout(function(){URL.revokeObjectURL(url)},100);
+}
+
+/* ── Comp map (Leaflet + OSM, Census geocoder) ──────────────────────── */
+/* Pure visual aid. Drawings are persisted in-memory until the user re-pastes
+ * a new CMA. We DO NOT auto-apply drawings to scoring/exclusion — the agent
+ * still toggles "Across divider" per comp. The map's job is to surface the
+ * geography Alan's hand-pricing relies on (dividers, boundaries, distance). */
+var MAP=null, MAP_MARKERS=[], SUBJ_MARKER=null, DRAW_LAYER=null;
+
+function initMap(){
+  if(typeof L==="undefined")return;             // Leaflet not loaded (tests.html, etc.)
+  var el=document.getElementById("map");
+  if(!el)return;
+  if(MAP){try{MAP.remove()}catch(e){};MAP=null}
+  MAP_MARKERS=[];SUBJ_MARKER=null;
+  MAP=L.map(el,{scrollWheelZoom:true,zoomControl:true}).setView([37.3,-122.0],11);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{
+    attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    maxZoom:19
+  }).addTo(MAP);
+  // Drawing toolbar — polyline (dividers), polygon (area boundaries), rectangle.
+  DRAW_LAYER=new L.FeatureGroup();MAP.addLayer(DRAW_LAYER);
+  if(L.Control&&L.Control.Draw){
+    var ctl=new L.Control.Draw({
+      edit:{featureGroup:DRAW_LAYER},
+      draw:{circle:false,circlemarker:false,marker:false,
+            polyline:{shapeOptions:{color:"#cd1f3f",weight:4,opacity:.85}},
+            polygon:{shapeOptions:{color:"#cd1f3f",weight:2,fillOpacity:.10}},
+            rectangle:{shapeOptions:{color:"#cd1f3f",weight:2,fillOpacity:.10}}}
+    });
+    MAP.addControl(ctl);
+    MAP.on(L.Draw.Event.CREATED,function(e){DRAW_LAYER.addLayer(e.layer)});
+  }
+  // Wait one frame for the container to size, then invalidate so OSM tiles render correctly.
+  setTimeout(function(){MAP.invalidateSize();geocodeAllForMap()},50);
+}
+
+function geocodeAllForMap(){
+  if(!MAP||!DATA)return;
+  var statusEl=document.getElementById("geo-status");
+  if(statusEl)statusEl.textContent="Locating subject…";
+  var subjAddr=DATA.subjectAddress;
+  if(subjAddr){
+    geocodeCoords(subjAddr,function(coords){
+      if(coords){
+        SUBJ_MARKER=L.marker([coords.lat,coords.lng],{icon:subjectIcon()})
+          .addTo(MAP).bindPopup('<div class="map-popup"><b>Subject Property</b><br>'+esc(subjAddr)+'</div>');
+        MAP.setView([coords.lat,coords.lng],14);
+      }
+      geocodeCompsForMap(0);
+    });
+  }else{geocodeCompsForMap(0)}
+}
+
+function geocodeCompsForMap(idx){
+  if(!MAP)return;
+  var statusEl=document.getElementById("geo-status");
+  if(idx>=CS.length){
+    if(statusEl)statusEl.textContent=MAP_MARKERS.filter(Boolean).length+" of "+CS.length+" comps mapped";
+    fitMapBounds();
+    return;
+  }
+  if(statusEl)statusEl.textContent="Locating "+(idx+1)+" of "+CS.length+"…";
+  var cs=CS[idx];
+  // Skip re-geocode if we already have coords (cached on the CS entry).
+  if(cs.coords){addCompMarker(cs,idx,cs.coords);setTimeout(function(){geocodeCompsForMap(idx+1)},0);return}
+  var addr=cs.comp.address;
+  if(addr.indexOf(",")===-1&&DATA.subjectAddress){
+    var parts=DATA.subjectAddress.split(",");
+    if(parts.length>=2)addr=addr+", "+parts.slice(1).join(",").trim();
+  }
+  geocodeCoords(addr,function(coords){
+    if(coords){cs.coords=coords;addCompMarker(cs,idx,coords)}
+    setTimeout(function(){geocodeCompsForMap(idx+1)},220);  // rate-limit the Census API
+  });
+}
+
+function addCompMarker(cs,idx,coords){
+  var marker=L.marker([coords.lat,coords.lng],{icon:compIcon(cs)});
+  marker.bindPopup(buildMapPopup(cs,idx));
+  marker.on("click",function(){
+    var card=document.getElementById("cc-"+idx);
+    if(card){
+      card.scrollIntoView({behavior:"smooth",block:"center"});
+      card.classList.add("highlight");
+      setTimeout(function(){card.classList.remove("highlight")},1600);
+    }
+  });
+  marker.addTo(MAP);
+  MAP_MARKERS[idx]=marker;
+}
+
+function subjectIcon(){
+  return L.divIcon({className:"map-pin map-pin-subject",html:"&#10073;",iconSize:[30,30],iconAnchor:[15,15]});
+}
+function compIcon(cs){
+  var s=(cs.status||"").toLowerCase();
+  var cls=/sold/.test(s)?"sold":/pending|contingent/.test(s)?"pending":/expired|cancel|withdraw/.test(s)?"inactive":"active";
+  var excl=cs.included?"":" excluded";
+  var label=cs.score!=null?String(cs.score):"·";
+  return L.divIcon({className:"map-pin map-pin-"+cls+excl,html:label,iconSize:[26,26],iconAnchor:[13,13]});
+}
+
+function buildMapPopup(cs,idx){
+  var c=cs.comp;
+  var h='<div class="map-popup"><b>'+esc(c.address)+'</b>';
+  h+='<div style="color:#6b7280;font-size:11px">'+esc(cs.status)+' &middot; '+esc(c.mls||"")+'</div>';
+  h+='<div class="pop-row"><span>Bd/Ba/SqFt</span><b>'+(c.beds||"?")+' / '+(c.baths||"?")+' / '+(c.sqft?c.sqft.toLocaleString():"?")+'</b></div>';
+  var headline=c.salePrice||c.listPrice;
+  if(headline)h+='<div class="pop-row"><span>'+(c.salePrice?"Sale":"List")+'</span><b>'+fmt(headline)+'</b></div>';
+  if(cs.adjustedValue)h+='<div class="pop-row"><span>Adjusted</span><b>'+fmt(cs.adjustedValue)+'</b></div>';
+  if(cs.score!=null)h+='<div class="pop-row"><span>Score</span><b>'+cs.score+'</b></div>';
+  if(cs.acrossDivider)h+='<div style="color:#a8231b;font-size:10.5px;margin-top:4px">Across divider</div>';
+  h+='</div>';
+  return h;
+}
+
+function fitMapBounds(){
+  if(!MAP)return;
+  var b=L.latLngBounds([]);
+  if(SUBJ_MARKER)b.extend(SUBJ_MARKER.getLatLng());
+  for(var i=0;i<MAP_MARKERS.length;i++)if(MAP_MARKERS[i])b.extend(MAP_MARKERS[i].getLatLng());
+  if(b.isValid())MAP.fitBounds(b,{padding:[36,36],maxZoom:16});
+}
+
+function clearMapDrawings(){if(DRAW_LAYER)DRAW_LAYER.clearLayers()}
+function toggleMap(){
+  var sec=document.getElementById("map-section"),btn=document.getElementById("map-toggle");
+  if(!sec)return;
+  sec.classList.toggle("collapsed");
+  var collapsed=sec.classList.contains("collapsed");
+  if(btn)btn.textContent=collapsed?"Show map":"Hide map";
+  if(!collapsed&&MAP){setTimeout(function(){MAP.invalidateSize()},50)}
+}
+
+/* Reuses our Census-geocoder pattern (already used for school zones) — same
+ * endpoint family, just the /locations/ flavor which returns lat/lng. Free,
+ * no API key. JSONP fallback when CORS bites. */
+function geocodeCoords(address,callback){
+  var url="https://geocoding.geo.census.gov/geocoder/locations/onelineaddress?address="+
+    encodeURIComponent(address)+"&benchmark=Public_AR_Current&format=json";
+  fetch(url).then(function(r){return r.json()}).then(function(data){
+    try{var c=data.result.addressMatches[0].coordinates;callback({lng:c.x,lat:c.y})}
+    catch(e){callback(null)}
+  }).catch(function(){geocodeCoordsJSONP(address,callback)});
+}
+function geocodeCoordsJSONP(address,callback){
+  var cbName="gc_"+Date.now()+"_"+Math.random().toString(36).substr(2,5);
+  var timeout=setTimeout(function(){delete window[cbName];callback(null)},8000);
+  window[cbName]=function(data){
+    clearTimeout(timeout);delete window[cbName];
+    try{var c=data.result.addressMatches[0].coordinates;callback({lng:c.x,lat:c.y})}
+    catch(e){callback(null)}
+  };
+  var s=document.createElement("script");
+  s.src="https://geocoding.geo.census.gov/geocoder/locations/onelineaddress?address="+
+    encodeURIComponent(address)+"&benchmark=Public_AR_Current&format=jsonp&callback="+cbName;
+  s.onerror=function(){clearTimeout(timeout);delete window[cbName];callback(null)};
+  document.head.appendChild(s);
 }
 
 /* ── Settings modal ─────────────────────────────────────────────────── */

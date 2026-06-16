@@ -1,5 +1,16 @@
 # Changelog
 
+## v2.1.0 — 2026-06-11
+
+**Comp map**, Redfin/Airbnb-style. Agents can now see the geography their pricing depends on — divider streets, city boundaries, distance from the subject.
+
+- **Map** under the subject card on the review screen. OpenStreetMap tiles via Leaflet — free, no API key, no billing.
+- **Pins**: subject in gold; comps coloured by status (sold green, pending amber, active gray, inactive red). Pin label shows the comp's 0–100 score; unselected comps are dimmed.
+- **Drawing toolbar**: polyline for dividers (El Camino, tracks), polygon / rectangle for area boundaries. KW-red strokes. "Clear drawings" button.
+- **Cross-sync** with the comp list: click a pin → its comp card scrolls into view and pulses gold; pin styles update live when you toggle selection or change condition/zone.
+- **Auto-geocoding** via the Census Geocoder we already use for school zones — same API, just the lat/lng flavour. Rate-limited to ~3/sec. Coords cached on the comp so re-renders don't re-geocode.
+- **Hide / Show map** toggle for agents who don't want it; map state is purely visual and never affects scoring or exclusion (agents still toggle "Across divider" by hand per comp).
+
 ## v2.0.0 — 2026-06-11
 
 **Major shift** — moves from "comparability scoring + manual price entry" to **dollar-adjusted recommended price + supported range**, matching how Alan actually hand-prices. The 0–100 match score stays as a filter heuristic; the headline output is now the algorithmic recommendation.
