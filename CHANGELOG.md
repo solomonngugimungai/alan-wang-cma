@@ -1,5 +1,52 @@
 # Changelog
 
+## v2.0.0 — 2026-06-11
+
+**Major shift** — moves from "comparability scoring + manual price entry" to **dollar-adjusted recommended price + supported range**, matching how Alan actually hand-prices. The 0–100 match score stays as a filter heuristic; the headline output is now the algorithmic recommendation.
+
+### Per-comp adjustments (Pass 1)
+
+- **Condition rebuilt** as a 3-tier system: **Move-in ready / Medium / Poor** (default Medium). Per Alan's logic, condition is a **dollar adjustment** based on remodel-cost remaining (kitchen + baths drive it). A comp in worse condition than the subject is adjusted **up** by the difference; a comp in better condition is adjusted **down**.
+- **Across-divider flag** per comp (El Camino, Willow, tracks, downtown edge). Controlled by editable setting: default mode is **exclude**; alternative is **down-weight** by an editable factor.
+- **Location haircut %** per comp (e.g. `-15` for tracks-adjacent). Applied to the base price before condition adjustment. Blank = 0.
+- **Recency weighting**: comps older than the (editable) window are multiplied by an (editable) factor. Default window 6 months, default factor 0.5.
+
+### Summary-level intelligence (Pass 2)
+
+- **Lot-size mismatch flag** when a comp's lot differs from the subject's by more than an editable threshold (default 30%). Warning only — never excludes. Skipped when lot is unknown (condos).
+- **Status-aware market read**: counts Expired / Cancelled / Withdrawn against Sold and labels the market **Soft / Balanced / Strong**. Threshold ratio editable.
+- **Zillow reference field** per comp — surfaced in the report **as reference only**, with a clear tag. Never used in any pricing calculation.
+- **Data-quality warnings** at the bottom of the review and at the top of the report: fires when fewer than 3 value comps are used, or when the adjusted range spread exceeds 25% of the recommended price ("tighten comp selection"). Both thresholds editable.
+- **Realist-profile note** added to the subject card, calling out that characteristics should come from the official record, not a prior listing.
+
+### Computed output
+
+- **Recommended Price** = weighted average of adjusted value comps (Sold + Pending/Contingent only). Pending comps are valued off list price (no sale price exists yet).
+- **Supported Range** = min / max of those adjusted values.
+- Both are computed live on every change and surfaced in the review panel and the printed report (alongside the agent's optional "Suggested List Price" override).
+
+### Settings
+
+A new gear icon on the subject card opens a settings modal. Everything below is editable and persisted to localStorage (per-browser):
+
+| Setting | Default |
+|---|---|
+| Condition · Poor → Move-in ($) | 80,000 |
+| Condition · Medium → Move-in ($) | 25,000 |
+| Divider mode | exclude |
+| Divider down-weight factor | 0.5 |
+| Recency window (months) | 6 |
+| Recency factor (older than window) | 0.5 |
+| Lot mismatch threshold | 30% |
+| Soft market threshold | 0.5 |
+| Data-quality min value comps | 3 |
+| Data-quality range spread | 25% |
+
+### Breaking
+
+- The old 4-tier High / Mid-High / Mid / Low condition rubric is gone; existing reports won't carry the old labels. Re-rate on the new 3-tier system.
+- Condition is no longer a ±5 score modifier — score is now purely the comparability heuristic.
+
 ## v1.5.0 — 2026-06-11
 
 - **Quick-select toolbar** above the comp list with three bulk actions:

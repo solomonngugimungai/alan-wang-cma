@@ -100,18 +100,42 @@
   // sqft 1900 vs 1480 = 28.4% (within 30%): 8 → 25+20+8+5 = 58
   assertEq("sqft within 30% partial = 58", sqftWithin30.score, 58);
 
-  // ── Condition modifier (±5 on top of TJ's 100) ────────────────────
-  group("Condition modifier (Alan's rating)");
+  // ── Dollar-adjustment model (Alan's hand-pricing logic, v2.0) ─────
+  group("Adjustment helpers");
+  // remodelCost lookup against the default SETTINGS values (Poor=80k, Medium=25k).
+  assertEq("remodelCost Move-in ready",  remodelCost("Move-in ready"), 0);
+  assertEq("remodelCost Medium",         remodelCost("Medium"),        25000);
+  assertEq("remodelCost Poor",           remodelCost("Poor"),          80000);
+
+  // compBasePrice: sold uses sale, pending uses list, active is not a value comp.
+  assertEq("compBasePrice sold → sale",  compBasePrice({status:"Sold",    comp:{salePrice:1500000, listPrice:1450000}}), 1500000);
+  assertEq("compBasePrice sold falls back to list",
+                                          compBasePrice({status:"Sold",    comp:{salePrice:null,    listPrice:1450000}}), 1450000);
+  assertEq("compBasePrice pending → list",compBasePrice({status:"Pending", comp:{salePrice:null,    listPrice:1450000}}), 1450000);
+  assertEq("compBasePrice active → null", compBasePrice({status:"Active",  comp:{salePrice:null,    listPrice:1450000}}), null);
+
+  // Date parsing + recency.
+  assertEq("parseCompDate mm/dd/yy",     parseCompDate("4/15/26").getFullYear(), 2026);
+  assertEq("parseCompDate yyyy-mm-dd",   parseCompDate("2026-04-15").getMonth(), 3);
+  assertEq("monthsAgo 12 months",        monthsAgo(new Date(2025,5,15), new Date(2026,5,15)), 12);
+
+  group("scoreComp filter heuristic (still 0-100)");
+  // Score is now purely the comparability heuristic — condition no longer modifies it.
   DATA = {subjectAddress:"199 Oak Park, Cupertino", subjectBeds:"2", subjectBaths:"2/0", subjectSqFt:1480};
-  // Build a fake CS + subject DOM to exercise updateScores().
-  function setupConditionTest(subjCond, comps){
+  function setupAdjTest(subjCond, comps){
     CS = comps.map(function(c){
-      return {comp:{beds:c.beds||"2",baths:c.baths||"2/0",sqft:c.sqft||1480,dom:c.dom!=null?c.dom:10},
-              status:"Sold",included:true,zone:"—",
-              condition:c.condition||"—",description:"",
-              score:0,flags:[]};
+      return {
+        comp:{beds:c.beds||"2", baths:c.baths||"2/0", sqft:c.sqft||1480,
+              dom:c.dom!=null?c.dom:10,
+              listPrice:c.listPrice||1500000, salePrice:c.salePrice||c.listPrice||1500000,
+              statusDt:c.statusDt||null},
+        status:c.status||"Sold",
+        included:true, zone:"—",
+        condition:c.condition||"Medium", description:"",
+        acrossDivider:!!c.acrossDivider, locationHaircut:c.locationHaircut||0, zillowEstimate:null,
+        score:0, flags:[], adjustedValue:null, weight:0, valueIncluded:false, exclusionReason:null
+      };
     });
-    // Stub the subj-zone + subj-condition selects + result containers.
     var host=document.createElement("div");host.style.display="none";
     host.innerHTML='<select id="subj-zone"><option>—</option></select>'+
                    '<select id="subj-condition"><option>'+subjCond+'</option></select>'+
@@ -121,31 +145,60 @@
     document.body.removeChild(host);
   }
 
-  // Perfect property match + condition match → +5 → clamped 100 floor doesn't matter, 75+5=80
-  setupConditionTest("High", [{condition:"High"}]);
-  assertEq("perfect + High↔High = 80",          CS[0].score, 80);
+  setupAdjTest("Medium", [{condition:"Medium"}]);
+  assertEq("perfect property match → score 75", CS[0].score, 75);
 
-  // Perfect property + 1 tier off → no modifier → 75
-  setupConditionTest("High", [{condition:"Mid-High"}]);
-  assertEq("perfect + 1 tier off = 75",         CS[0].score, 75);
+  group("Adjusted value (condition + location haircut)");
+  // Comp identical, both Medium → zero adjustment → adjustedValue = salePrice.
+  setupAdjTest("Medium", [{salePrice:1500000, condition:"Medium"}]);
+  assertEq("identical Medium ↔ Medium → adj = sale",    CS[0].adjustedValue, 1500000);
 
-  // Perfect property + 2 tiers off → -3 → 72
-  setupConditionTest("High", [{condition:"Mid"}]);
-  assertEq("perfect + 2 tiers off = 72",        CS[0].score, 72);
+  // Subject Move-in, comp Poor → comp needs +$80k of work → adjust UP by $80k.
+  setupAdjTest("Move-in ready", [{salePrice:1500000, condition:"Poor"}]);
+  assertEq("subject Move-in, comp Poor → +$80k",        CS[0].adjustedValue, 1580000);
 
-  // Perfect property + 3 tiers (High↔Low) → -5 → 70
-  setupConditionTest("High", [{condition:"Low"}]);
-  assertEq("perfect + High↔Low = 70",           CS[0].score, 70);
+  // Subject Poor, comp Move-in → comp's price already reflects $80k of work → adjust DOWN.
+  setupAdjTest("Poor", [{salePrice:1500000, condition:"Move-in ready"}]);
+  assertEq("subject Poor, comp Move-in → −$80k",        CS[0].adjustedValue, 1420000);
 
-  // Either side unrated → no modifier → 75
-  setupConditionTest("—", [{condition:"High"}]);
-  assertEq("subject unrated → no modifier",     CS[0].score, 75);
-  setupConditionTest("High", [{condition:"—"}]);
-  assertEq("comp unrated → no modifier",        CS[0].score, 75);
+  // Medium subject, Move-in comp → comp has $25k of work already done → adjust DOWN.
+  setupAdjTest("Medium", [{salePrice:1500000, condition:"Move-in ready"}]);
+  assertEq("subject Medium, comp Move-in → −$25k",      CS[0].adjustedValue, 1475000);
 
-  // Score floors at 0 (can't go negative even with mismatch on weak property)
-  setupConditionTest("High", [{condition:"Low", beds:"5", baths:"5/0", sqft:5000, dom:300}]);
-  assertEq("can't go below 0",                  CS[0].score, 0);
+  // Location haircut: −15% on $1,500,000 = −$225,000 base; same condition = 0 cond adj.
+  setupAdjTest("Medium", [{salePrice:1500000, condition:"Medium", locationHaircut:-15}]);
+  assertEq("location haircut −15% on $1.5M → $1.275M",  CS[0].adjustedValue, 1275000);
+
+  // Combined: condition +$80k AND location −15% on $1.5M base = 1500000 + (-225000) + 80000 = $1,355,000.
+  setupAdjTest("Move-in ready", [{salePrice:1500000, condition:"Poor", locationHaircut:-15}]);
+  assertEq("combined: loc −15% + cond +$80k = $1,355,000", CS[0].adjustedValue, 1355000);
+
+  group("Divider handling");
+  // Default mode is "exclude": across-divider comp keeps its adjustedValue but valueIncluded=false.
+  SETTINGS.divider.mode = "exclude";
+  setupAdjTest("Medium", [{salePrice:1500000, condition:"Medium", acrossDivider:true}]);
+  assertEq("divider exclude: valueIncluded false",      CS[0].valueIncluded, false);
+  assertEq("divider exclude: adjustedValue still set",  CS[0].adjustedValue, 1500000);
+
+  // Down-weight mode applies the factor to weight; comp still counts.
+  SETTINGS.divider.mode = "downweight"; SETTINGS.divider.factor = 0.5;
+  setupAdjTest("Medium", [{salePrice:1500000, condition:"Medium", acrossDivider:true}]);
+  assertEq("divider downweight: weight = 0.5",          CS[0].weight, 0.5);
+  assertEq("divider downweight: valueIncluded true",    CS[0].valueIncluded, true);
+  SETTINGS.divider.mode = "exclude"; // restore default
+
+  group("Recommended price (weighted average)");
+  // Three comps, all equal weight, average is plain mean.
+  setupAdjTest("Medium", [
+    {salePrice:1400000, condition:"Medium"},
+    {salePrice:1500000, condition:"Medium"},
+    {salePrice:1600000, condition:"Medium"}
+  ]);
+  var rec = recommendedPrice();
+  assertEq("rec.n = 3",                      rec.n,     3);
+  assertEq("rec.price = mean of 1.4/1.5/1.6M", rec.price, 1500000);
+  assertEq("rec.low = 1,400,000",            rec.low,   1400000);
+  assertEq("rec.high = 1,600,000",           rec.high,  1600000);
 
   // ── Parser ────────────────────────────────────────────────────────
   group("parse — MLSListings PDF text");
