@@ -764,18 +764,24 @@ function initMap(){
     attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
     maxZoom:19
   }).addTo(MAP);
-  // Drawing toolbar — polyline (dividers), polygon (area boundaries), rectangle.
+  // Drawing toolbar — polyline (dividers), polygon/rectangle/circle (areas).
+  // Area shapes (polygon, rectangle, circle) also SELECT the comps inside them;
+  // polyline stays a pure visual divider.
   DRAW_LAYER=new L.FeatureGroup();MAP.addLayer(DRAW_LAYER);
   if(L.Control&&L.Control.Draw){
     var ctl=new L.Control.Draw({
       edit:{featureGroup:DRAW_LAYER},
-      draw:{circle:false,circlemarker:false,marker:false,
+      draw:{circlemarker:false,marker:false,
             polyline:{shapeOptions:{color:"#cd1f3f",weight:4,opacity:.85}},
-            polygon:{shapeOptions:{color:"#cd1f3f",weight:2,fillOpacity:.10}},
-            rectangle:{shapeOptions:{color:"#cd1f3f",weight:2,fillOpacity:.10}}}
+            polygon:{shapeOptions:{color:"#0c6b3b",weight:2,fillOpacity:.10}},
+            rectangle:{shapeOptions:{color:"#0c6b3b",weight:2,fillOpacity:.10}},
+            circle:{shapeOptions:{color:"#0c6b3b",weight:2,fillOpacity:.10}}}
     });
     MAP.addControl(ctl);
-    MAP.on(L.Draw.Event.CREATED,function(e){DRAW_LAYER.addLayer(e.layer)});
+    MAP.on(L.Draw.Event.CREATED,function(e){
+      DRAW_LAYER.addLayer(e.layer);
+      if(e.layerType!=="polyline")selectCompsInShape(e.layer);  // areas select; dividers don't
+    });
   }
   // Wait one frame for the container to size, then invalidate so OSM tiles render correctly.
   setTimeout(function(){MAP.invalidateSize();geocodeAllForMap()},50);
@@ -890,6 +896,37 @@ function fitMapBounds(){
 }
 
 function clearMapDrawings(){if(DRAW_LAYER)DRAW_LAYER.clearLayers()}
+
+/* ── Draw-to-select ─────────────────────────────────────────────────────
+ * Drawing a circle / rectangle / polygon SELECTS (includes) every comp whose
+ * pin falls inside it. Additive: comps already selected outside the shape are
+ * left untouched, so you can lasso several neighborhoods in turn. */
+function pointInPolygon(p,ring){
+  var x=p.lng,y=p.lat,inside=false;
+  for(var i=0,j=ring.length-1;i<ring.length;j=i++){
+    var xi=ring[i].lng,yi=ring[i].lat,xj=ring[j].lng,yj=ring[j].lat;
+    if(((yi>y)!==(yj>y))&&(x<(xj-xi)*(y-yi)/(yj-yi)+xi))inside=!inside;
+  }
+  return inside;
+}
+function pointInLayer(latlng,layer){
+  if(layer instanceof L.Circle)return latlng.distanceTo(layer.getLatLng())<=layer.getRadius();
+  if(layer instanceof L.Polygon){              // L.Rectangle extends L.Polygon
+    var ring=layer.getLatLngs()[0];
+    return ring&&ring.length>=3&&pointInPolygon(latlng,ring);
+  }
+  return false;
+}
+function selectCompsInShape(layer){
+  var hits=0;
+  for(var i=0;i<MAP_MARKERS.length;i++){
+    if(!MAP_MARKERS[i]||!CS[i])continue;
+    if(pointInLayer(MAP_MARKERS[i].getLatLng(),layer)){CS[i].included=true;hits++}
+  }
+  renderCompList();refreshMapPins();
+  var statusEl=document.getElementById("geo-status");
+  if(statusEl)statusEl.textContent=hits?("Selected "+hits+" comp"+(hits===1?"":"s")+" in drawn area"):"No comps inside drawn area";
+}
 function toggleMap(){
   var sec=document.getElementById("map-section"),btn=document.getElementById("map-toggle");
   if(!sec)return;
