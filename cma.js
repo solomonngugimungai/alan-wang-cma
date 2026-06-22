@@ -790,7 +790,8 @@ function geocodeAllForMap(){
     geocodeCoords(subjAddr,function(coords){
       if(coords){
         SUBJ_MARKER=L.marker([coords.lat,coords.lng],{icon:subjectIcon(),zIndexOffset:1000})
-          .addTo(MAP).bindPopup('<div class="map-popup"><b>Subject Property</b><br>'+esc(subjAddr)+'</div>');
+          .addTo(MAP).bindPopup('<div class="map-popup"><b>Subject Property</b><br>'+esc(subjAddr)+
+            '<a class="listing-btn" href="'+zillowURL(subjAddr)+'" target="_blank" rel="noopener">View listing &#8599;</a></div>');
         MAP.setView([coords.lat,coords.lng],14);
       }
       geocodeCompsForMap(0);
@@ -865,6 +866,7 @@ function buildMapPopup(cs,idx){
   if(cs.adjustedValue)h+='<div class="pop-row"><span>Adjusted</span><b>'+fmt(cs.adjustedValue)+'</b></div>';
   if(cs.score!=null)h+='<div class="pop-row"><span>Score</span><b>'+cs.score+'</b></div>';
   if(cs.acrossDivider)h+='<div style="color:#a8231b;font-size:10.5px;margin-top:4px">Across divider</div>';
+  h+='<a class="listing-btn" href="'+zillowURL(c.address)+'" target="_blank" rel="noopener">View listing &#8599;</a>';
   h+='</div>';
   return h;
 }
