@@ -787,7 +787,7 @@ function geocodeAllForMap(){
   if(statusEl)statusEl.textContent="Locating subject…";
   var subjAddr=DATA.subjectAddress;
   if(subjAddr){
-    geocodeCoords(subjAddr,function(coords){
+    geocodeCoordsSmart(subjAddr,function(coords){
       if(coords){
         SUBJ_MARKER=L.marker([coords.lat,coords.lng],{icon:subjectIcon(),zIndexOffset:1000})
           .addTo(MAP).bindPopup('<div class="map-popup"><b>Subject Property</b><br>'+esc(subjAddr)+
@@ -816,7 +816,7 @@ function geocodeCompsForMap(idx){
     var parts=DATA.subjectAddress.split(",");
     if(parts.length>=2)addr=addr+", "+parts.slice(1).join(",").trim();
   }
-  geocodeCoords(addr,function(coords){
+  geocodeCoordsSmart(addr,function(coords){
     if(coords){cs.coords=coords;addCompMarker(cs,idx,coords)}
     setTimeout(function(){geocodeCompsForMap(idx+1)},220);  // rate-limit the Census API
   });
@@ -887,6 +887,25 @@ function toggleMap(){
   var collapsed=sec.classList.contains("collapsed");
   if(btn)btn.textContent=collapsed?"Show map":"Hide map";
   if(!collapsed&&MAP){setTimeout(function(){MAP.invalidateSize()},50)}
+}
+
+/* The Census onelineaddress geocoder fails to match addresses that carry a
+ * unit/secondary designator (e.g. "#45", "Apt 2", "Unit B"). Strip it so a
+ * condo/townhouse still lands at its street location. */
+function stripUnit(addr){
+  return addr
+    .replace(/\s*#\s*\S+/g,"")
+    .replace(/\s+(apt|unit|ste|suite|spc|space|lot|bldg|fl|floor|rm)\.?\s+\S+/ig,"")
+    .replace(/\s{2,}/g," ").replace(/\s+,/g,",").trim();
+}
+/* Try the address as-is; on no-match, retry without the unit designator. */
+function geocodeCoordsSmart(address,callback){
+  geocodeCoords(address,function(c){
+    if(c)return callback(c);
+    var stripped=stripUnit(address);
+    if(stripped&&stripped!==address)return geocodeCoords(stripped,callback);
+    callback(null);
+  });
 }
 
 /* Reuses our Census-geocoder pattern (already used for school zones) — same
