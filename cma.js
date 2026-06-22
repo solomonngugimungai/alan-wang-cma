@@ -839,7 +839,11 @@ function addCompMarker(cs,idx,coords){
 function subjectIcon(){
   return L.divIcon({
     className:"map-pin-subject-wrap",
-    html:'<div class="subj-pulse"></div><div class="subj-pin">&#9733;</div><div class="subj-tag">SUBJECT</div>',
+    html:'<div class="subj-pulse"></div>'+
+      '<svg class="subj-star" viewBox="0 0 24 24" width="40" height="40" aria-hidden="true">'+
+        '<path d="M12 1.6l3.09 6.26 6.91 1-5 4.87 1.18 6.88L12 17.27 5.82 20.6 7 13.73l-5-4.87 6.91-1z" '+
+        'fill="#f5a623" stroke="#fff" stroke-width="1.4" stroke-linejoin="round"/></svg>'+
+      '<div class="subj-tag">SUBJECT</div>',
     iconSize:[44,44],iconAnchor:[22,22]
   });
 }
