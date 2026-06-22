@@ -898,9 +898,8 @@ function fitMapBounds(){
 function clearMapDrawings(){if(DRAW_LAYER)DRAW_LAYER.clearLayers()}
 
 /* ── Draw-to-select ─────────────────────────────────────────────────────
- * Drawing a circle / rectangle / polygon SELECTS (includes) every comp whose
- * pin falls inside it. Additive: comps already selected outside the shape are
- * left untouched, so you can lasso several neighborhoods in turn. */
+ * Drawing a circle / rectangle / polygon makes the shape the comp set:
+ * every comp inside is selected, everything outside is deselected. */
 function pointInPolygon(p,ring){
   var x=p.lng,y=p.lat,inside=false;
   for(var i=0,j=ring.length-1;i<ring.length;j=i++){
@@ -920,8 +919,10 @@ function pointInLayer(latlng,layer){
 function selectCompsInShape(layer){
   var hits=0;
   for(var i=0;i<MAP_MARKERS.length;i++){
-    if(!MAP_MARKERS[i]||!CS[i])continue;
-    if(pointInLayer(MAP_MARKERS[i].getLatLng(),layer)){CS[i].included=true;hits++}
+    if(!CS[i])continue;
+    var inside=MAP_MARKERS[i]&&pointInLayer(MAP_MARKERS[i].getLatLng(),layer);
+    CS[i].included=!!inside;            // inside → select, outside → deselect
+    if(inside)hits++;
   }
   renderCompList();refreshMapPins();
   var statusEl=document.getElementById("geo-status");
