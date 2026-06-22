@@ -788,15 +788,25 @@ function geocodeAllForMap(){
   var subjAddr=DATA.subjectAddress;
   if(subjAddr){
     geocodeCoordsSmart(subjAddr,function(coords){
-      if(coords){
-        SUBJ_MARKER=L.marker([coords.lat,coords.lng],{icon:subjectIcon(),zIndexOffset:1000})
-          .addTo(MAP).bindPopup('<div class="map-popup"><b>Subject Property</b><br>'+esc(subjAddr)+
-            '<a class="listing-btn" href="'+zillowURL(subjAddr)+'" target="_blank" rel="noopener">View listing &#8599;</a></div>');
-        MAP.setView([coords.lat,coords.lng],14);
-      }
-      geocodeCompsForMap(0);
+      if(coords){placeSubjectMarker(subjAddr,coords,false);geocodeCompsForMap(0);return}
+      // Last resort: drop the star on the ZIP/city so the subject is at least
+      // visible in the right area, clearly flagged as approximate.
+      var zip=(subjAddr.match(/\b\d{5}\b/)||[])[0];
+      var area=zip?zip+", CA, USA":subjAddr.split(",").slice(1).join(",").trim();
+      geocodeNominatim(area,function(c2){
+        if(c2)placeSubjectMarker(subjAddr,c2,true);
+        geocodeCompsForMap(0);
+      });
     });
   }else{geocodeCompsForMap(0)}
+}
+
+function placeSubjectMarker(subjAddr,coords,approx){
+  var note=approx?'<div style="color:#a8231b;font-size:10.5px;margin-top:4px">Approximate — exact address not found</div>':'';
+  SUBJ_MARKER=L.marker([coords.lat,coords.lng],{icon:subjectIcon(),zIndexOffset:1000})
+    .addTo(MAP).bindPopup('<div class="map-popup"><b>Subject Property</b><br>'+esc(subjAddr)+note+
+      '<a class="listing-btn" href="'+zillowURL(subjAddr)+'" target="_blank" rel="noopener">View listing &#8599;</a></div>');
+  MAP.setView([coords.lat,coords.lng],14);
 }
 
 function geocodeCompsForMap(idx){
@@ -898,14 +908,27 @@ function stripUnit(addr){
     .replace(/\s+(apt|unit|ste|suite|spc|space|lot|bldg|fl|floor|rm)\.?\s+\S+/ig,"")
     .replace(/\s{2,}/g," ").replace(/\s+,/g,",").trim();
 }
-/* Try the address as-is; on no-match, retry without the unit designator. */
+/* Secondary geocoder: OpenStreetMap Nominatim. More forgiving than Census
+ * for condos/townhouses and odd formatting. Same OSM data behind our tiles. */
+function geocodeNominatim(address,callback){
+  var url="https://nominatim.openstreetmap.org/search?format=json&limit=1&q="+encodeURIComponent(address);
+  fetch(url,{headers:{Accept:"application/json"}}).then(function(r){return r.json()}).then(function(d){
+    if(d&&d.length){callback({lat:parseFloat(d[0].lat),lng:parseFloat(d[0].lon)})}
+    else callback(null);
+  }).catch(function(){callback(null)});
+}
+/* Try, in order: Census full → Census no-unit → Nominatim full → Nominatim
+ * no-unit. First hit wins; null only if every provider/variant misses. */
 function geocodeCoordsSmart(address,callback){
-  geocodeCoords(address,function(c){
-    if(c)return callback(c);
-    var stripped=stripUnit(address);
-    if(stripped&&stripped!==address)return geocodeCoords(stripped,callback);
-    callback(null);
-  });
+  var stripped=stripUnit(address);
+  var attempts=[function(cb){geocodeCoords(address,cb)}];
+  if(stripped&&stripped!==address)attempts.push(function(cb){geocodeCoords(stripped,cb)});
+  attempts.push(function(cb){geocodeNominatim(address,cb)});
+  if(stripped&&stripped!==address)attempts.push(function(cb){geocodeNominatim(stripped,cb)});
+  (function run(i){
+    if(i>=attempts.length)return callback(null);
+    attempts[i](function(c){if(c)return callback(c);run(i+1)});
+  })(0);
 }
 
 /* Reuses our Census-geocoder pattern (already used for school zones) — same
