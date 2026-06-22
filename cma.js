@@ -789,7 +789,7 @@ function geocodeAllForMap(){
   if(subjAddr){
     geocodeCoords(subjAddr,function(coords){
       if(coords){
-        SUBJ_MARKER=L.marker([coords.lat,coords.lng],{icon:subjectIcon()})
+        SUBJ_MARKER=L.marker([coords.lat,coords.lng],{icon:subjectIcon(),zIndexOffset:1000})
           .addTo(MAP).bindPopup('<div class="map-popup"><b>Subject Property</b><br>'+esc(subjAddr)+'</div>');
         MAP.setView([coords.lat,coords.lng],14);
       }
@@ -837,7 +837,11 @@ function addCompMarker(cs,idx,coords){
 }
 
 function subjectIcon(){
-  return L.divIcon({className:"map-pin map-pin-subject",html:"&#10073;",iconSize:[30,30],iconAnchor:[15,15]});
+  return L.divIcon({
+    className:"map-pin-subject-wrap",
+    html:'<div class="subj-pulse"></div><div class="subj-pin">&#9733;</div><div class="subj-tag">SUBJECT</div>',
+    iconSize:[44,44],iconAnchor:[22,22]
+  });
 }
 function compIcon(cs){
   var s=(cs.status||"").toLowerCase();
