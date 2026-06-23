@@ -936,25 +936,36 @@ function pointInPolygon(p,ring){
   }
   return inside;
 }
+/* Duck-typed hit test — avoids `instanceof`, which is unreliable across the
+ * Leaflet / Leaflet-draw version pairing (a drawn shape can fail instanceof
+ * and silently match nothing). Circle: getRadius() is meters (circlemarker is
+ * disabled). Polygon/rectangle: test the outer ring (flat or nested). */
 function pointInLayer(latlng,layer){
-  if(layer instanceof L.Circle)return latlng.distanceTo(layer.getLatLng())<=layer.getRadius();
-  if(layer instanceof L.Polygon){              // L.Rectangle extends L.Polygon
-    var ring=layer.getLatLngs()[0];
-    return ring&&ring.length>=3&&pointInPolygon(latlng,ring);
+  if(typeof layer.getRadius==="function"&&typeof layer.getLatLng==="function")
+    return latlng.distanceTo(layer.getLatLng())<=layer.getRadius();
+  if(typeof layer.getLatLngs==="function"){
+    var lls=layer.getLatLngs();
+    // Leaflet returns a nested ring array for polygons; tolerate a flat one too.
+    var ring=(lls&&lls.length&&lls[0]&&lls[0].lat!==undefined)?lls:(lls&&lls[0]);
+    return !!(ring&&ring.length>=3&&pointInPolygon(latlng,ring));
   }
   return false;
 }
 function selectCompsInShape(layer){
-  var hits=0;
-  for(var i=0;i<MAP_MARKERS.length;i++){
-    if(!CS[i])continue;
-    var inside=MAP_MARKERS[i]&&pointInLayer(MAP_MARKERS[i].getLatLng(),layer);
-    CS[i].included=!!inside;            // inside → select, outside → deselect
-    if(inside)hits++;
-  }
-  renderCompList();refreshMapPins();
   var statusEl=document.getElementById("geo-status");
-  if(statusEl)statusEl.textContent=hits?("Selected "+hits+" comp"+(hits===1?"":"s")+" in drawn area"):"No comps inside drawn area";
+  try{
+    var hits=0;
+    for(var i=0;i<CS.length;i++){
+      if(!CS[i])continue;
+      var inside=MAP_MARKERS[i]&&pointInLayer(MAP_MARKERS[i].getLatLng(),layer);
+      CS[i].included=!!inside;          // inside → select, outside → deselect
+      if(inside)hits++;
+    }
+    renderCompList();refreshMapPins();
+    if(statusEl)statusEl.textContent=hits?("Selected "+hits+" comp"+(hits===1?"":"s")+" in drawn area"):"No comps inside drawn area";
+  }catch(err){
+    if(statusEl)statusEl.textContent="Selection error: "+(err&&err.message||err);
+  }
 }
 function toggleMap(){
   var sec=document.getElementById("map-section"),btn=document.getElementById("map-toggle");
