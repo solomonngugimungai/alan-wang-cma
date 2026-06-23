@@ -276,6 +276,7 @@ function doParse(){
         adjustedValue:null, weight:0, valueIncluded:false, exclusionReason:null
       })}}
   renderReview();show('s2');
+  prefillSqftRange();
   // Map needs the container visible to compute its size, so init AFTER show().
   initMap();
 }
@@ -436,6 +437,33 @@ function selectAll(){
 function clearSelection(){
   for(var i=0;i<CS.length;i++)CS[i].included=false;
   renderCompList();refreshMapPins();
+}
+/* Select only sold/closed comps; deselect everything else. */
+function selectSoldOnly(){
+  for(var i=0;i<CS.length;i++)CS[i].included=/sold|closed/.test((CS[i].status||"").toLowerCase());
+  renderCompList();refreshMapPins();
+}
+/* Select comps whose SqFt falls in [min,max]; blank bound = open-ended.
+ * Exclusive: comps outside the range (or with no SqFt) are deselected. */
+function selectBySqftRange(){
+  var minEl=document.getElementById("sqft-min"),maxEl=document.getElementById("sqft-max");
+  var min=minEl&&minEl.value!==""?parseInt(minEl.value):null;
+  var max=maxEl&&maxEl.value!==""?parseInt(maxEl.value):null;
+  if(min!=null&&max!=null&&min>max){var t=min;min=max;max=t}  // tolerate swapped bounds
+  for(var i=0;i<CS.length;i++){
+    var sq=CS[i].comp.sqft;
+    CS[i].included=sq!=null&&(min==null||sq>=min)&&(max==null||sq<=max);
+  }
+  renderCompList();refreshMapPins();
+}
+/* Pre-fill the SqFt range to subject ±20% as a sensible starting window. */
+function prefillSqftRange(){
+  var minEl=document.getElementById("sqft-min"),maxEl=document.getElementById("sqft-max");
+  if(!minEl||!maxEl||!DATA||!DATA.subjectSqFt)return;
+  if(minEl.value===""&&maxEl.value===""){
+    minEl.value=Math.round(DATA.subjectSqFt*0.8/10)*10;
+    maxEl.value=Math.round(DATA.subjectSqFt*1.2/10)*10;
+  }
 }
 function setCondition(i,v){CS[i].condition=v;updateScores()}
 /* Description updates shouldn't trigger a full re-render — that would steal

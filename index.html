@@ -96,6 +96,10 @@
   .qa-btn:hover{border-color:var(--gold);color:var(--gold)}
   .qa-btn.qa-primary{background:var(--gold);color:#fff;border-color:var(--gold)}
   .qa-btn.qa-primary:hover{background:var(--gold-light);border-color:var(--gold-light);color:#fff}
+  .qa-range{display:inline-flex;align-items:center;gap:6px;margin-left:8px;padding-left:10px;border-left:1px solid var(--gray-border)}
+  .qa-num{width:64px;padding:5px 8px;border:1px solid var(--gray-border);border-radius:4px;font-size:11px;font-family:var(--font);color:var(--text)}
+  .qa-num:focus{outline:none;border-color:var(--gold)}
+  .qa-dash{color:var(--gray-text);font-size:11px}
   .legend{display:flex;gap:16px;margin-bottom:10px;flex-wrap:wrap}
   .leg-item{display:flex;align-items:center;gap:4px;font-size:11px;color:var(--gray-text)}
   .leg-dot{width:10px;height:10px;border-radius:50%;display:inline-block}
@@ -283,8 +287,16 @@
   <div class="quick-actions">
     <span class="qa-label">Quick select</span>
     <button class="qa-btn qa-primary" onclick="selectStrongOnly()">Strong only (70+)</button>
+    <button class="qa-btn" onclick="selectSoldOnly()">Sold only</button>
     <button class="qa-btn" onclick="selectAll()">All</button>
     <button class="qa-btn" onclick="clearSelection()">Clear</button>
+    <span class="qa-range">
+      <span class="qa-label">SqFt range</span>
+      <input type="number" id="sqft-min" class="qa-num" placeholder="min" min="0" step="50">
+      <span class="qa-dash">–</span>
+      <input type="number" id="sqft-max" class="qa-num" placeholder="max" min="0" step="50">
+      <button class="qa-btn" onclick="selectBySqftRange()">Apply</button>
+    </span>
   </div>
   <div class="legend">
     <div class="leg-item"><span class="leg-dot" style="background:var(--green)"></span> Strong (70+)</div>
