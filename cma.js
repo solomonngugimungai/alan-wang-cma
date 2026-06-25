@@ -289,6 +289,7 @@ function refreshMapPins(){
     MAP_MARKERS[i].setIcon(compIcon(CS[i]));
     MAP_MARKERS[i].setPopupContent(buildMapPopup(CS[i],i));
   }
+  if(MAP_COLOR_MODE==="zone")renderZoneLegend();
 }
 
 function renderReview(){
@@ -780,6 +781,22 @@ function downloadReport(){
  * still toggles "Across divider" per comp. The map's job is to surface the
  * geography Alan's hand-pricing relies on (dividers, boundaries, distance). */
 var MAP=null, MAP_MARKERS=[], SUBJ_MARKER=null, DRAW_LAYER=null;
+var MAP_COLOR_MODE="status";      // "status" (sale status) | "zone" (school district)
+var ZONE_INDEX={};                // district name → stable palette index (0-9)
+
+/* Stable per-zone palette index, assigned in first-seen order. */
+function zoneClass(zone){
+  if(!zone||zone==="—")return "zc-unknown";
+  if(!(zone in ZONE_INDEX)){
+    var n=0;for(var k in ZONE_INDEX)if(ZONE_INDEX.hasOwnProperty(k))n++;
+    ZONE_INDEX[zone]=n%10;
+  }
+  return "zc"+ZONE_INDEX[zone];
+}
+function subjectZone(){
+  var el=document.getElementById("subj-zone");
+  return el?el.value:"—";
+}
 
 function initMap(){
   if(typeof L==="undefined")return;             // Leaflet not loaded (tests.html, etc.)
@@ -893,11 +910,19 @@ function subjectIcon(){
   });
 }
 function compIcon(cs){
-  var s=(cs.status||"").toLowerCase();
-  var cls=/sold/.test(s)?"sold":/pending|contingent/.test(s)?"pending":/expired|cancel|withdraw/.test(s)?"inactive":"active";
   var excl=cs.included?"":" excluded";
   var label=cs.score!=null?String(cs.score):"·";
-  return L.divIcon({className:"map-pin map-pin-"+cls+excl,html:label,iconSize:[26,26],iconAnchor:[13,13]});
+  var cls;
+  if(MAP_COLOR_MODE==="zone"){
+    var sz=subjectZone();
+    var diff=(sz!=="—"&&cs.zone&&cs.zone!=="—"&&cs.zone!==sz)?" zone-diff":"";
+    cls="map-pin "+zoneClass(cs.zone)+diff+excl;
+  }else{
+    var s=(cs.status||"").toLowerCase();
+    var st=/sold/.test(s)?"sold":/pending|contingent/.test(s)?"pending":/expired|cancel|withdraw/.test(s)?"inactive":"active";
+    cls="map-pin map-pin-"+st+excl;
+  }
+  return L.divIcon({className:cls,html:label,iconSize:[26,26],iconAnchor:[13,13]});
 }
 
 function buildMapPopup(cs,idx){
@@ -909,6 +934,10 @@ function buildMapPopup(cs,idx){
   if(headline)h+='<div class="pop-row"><span>'+(c.salePrice?"Sale":"List")+'</span><b>'+fmt(headline)+'</b></div>';
   if(cs.adjustedValue)h+='<div class="pop-row"><span>Adjusted</span><b>'+fmt(cs.adjustedValue)+'</b></div>';
   if(cs.score!=null)h+='<div class="pop-row"><span>Score</span><b>'+cs.score+'</b></div>';
+  if(cs.zone&&cs.zone!=="—"){
+    var sz=subjectZone(),diff=(sz!=="—"&&cs.zone!==sz);
+    h+='<div class="pop-row"><span>School zone</span><b'+(diff?' style="color:#a8231b"':'')+'>'+esc(cs.zone)+(diff?' &#9888;':'')+'</b></div>';
+  }
   if(cs.acrossDivider)h+='<div style="color:#a8231b;font-size:10.5px;margin-top:4px">Across divider</div>';
   h+='<a class="listing-btn" href="'+zillowURL(c.address)+'" target="_blank" rel="noopener">View listing &#8599;</a>';
   h+='</div>';
@@ -924,6 +953,53 @@ function fitMapBounds(){
 }
 
 function clearMapDrawings(){if(DRAW_LAYER)DRAW_LAYER.clearLayers()}
+
+/* ── School-zone coloring ────────────────────────────────────────────────
+ * Toggle the comp pins between sale-status colors and school-district colors
+ * so price differences driven by zoning are visible geographically. */
+function toggleZoneColoring(){
+  MAP_COLOR_MODE=(MAP_COLOR_MODE==="zone")?"status":"zone";
+  var btn=document.getElementById("zone-color-toggle");
+  if(btn)btn.textContent=(MAP_COLOR_MODE==="zone")?"Color by status":"Color by school zone";
+  refreshMapPins();
+  renderZoneLegend();
+  if(MAP_COLOR_MODE==="zone"){
+    var known=CS.filter(function(c){return c.zone&&c.zone!=="—"}).length;
+    var statusEl=document.getElementById("geo-status");
+    if(!known&&statusEl)statusEl.textContent="No zones yet — run “Auto-Detect All Zones” in Settings";
+  }
+}
+function renderZoneLegend(){
+  var leg=document.getElementById("zone-legend");
+  if(!leg)return;
+  if(MAP_COLOR_MODE!=="zone"){leg.className="zone-legend";leg.innerHTML="";return}
+  // Tally zones across all comps (+ subject), preserving palette order.
+  var counts={},sz=subjectZone();
+  for(var i=0;i<CS.length;i++){var z=(CS[i].zone&&CS[i].zone!=="—")?CS[i].zone:"Unknown";counts[z]=(counts[z]||0)+1}
+  var zones=Object.keys(counts).sort(function(a,b){
+    if(a==="Unknown")return 1;if(b==="Unknown")return -1;
+    return (ZONE_INDEX[a]==null?99:ZONE_INDEX[a])-(ZONE_INDEX[b]==null?99:ZONE_INDEX[b]);
+  });
+  var h='<span class="zl-title">School zones</span>';
+  for(var j=0;j<zones.length;j++){
+    var z=zones[j],isSubj=(z===sz);
+    var dotCls=(z==="Unknown")?"zc-unknown":zoneClass(z);
+    h+='<span class="zl-item"><span class="zl-dot '+dotCls+'" style="'+zoneDotStyle(dotCls)+'"></span>'+
+       '<span'+(isSubj?' class="zl-subj"':'')+'>'+esc(z)+(isSubj?" ★ subject":"")+'</span>'+
+       ' <span class="zl-count">('+counts[z]+')</span></span>';
+  }
+  var diff=0;
+  if(sz!=="—")for(var k=0;k<CS.length;k++)if(CS[k].zone&&CS[k].zone!=="—"&&CS[k].zone!==sz)diff++;
+  if(diff>0)h+='<span class="zl-note">&#9888; '+diff+' comp'+(diff===1?"":"s")+' in a different zone than the subject</span>';
+  leg.innerHTML=h;leg.className="zone-legend on";
+}
+/* The legend dots reuse the pin palette; pull each class's color so the inline
+ * style matches even though the classes live in the stylesheet. */
+function zoneDotStyle(cls){
+  var map={"zc0":"#2563eb","zc1":"#16a34a","zc2":"#db2777","zc3":"#ea580c","zc4":"#7c3aed",
+           "zc5":"#0891b2","zc6":"#ca8a04","zc7":"#dc2626","zc8":"#4338ca","zc9":"#15803d","zc-unknown":"#9ca3af"};
+  return map[cls]?("background:"+map[cls]):"";
+}
 
 /* ── Draw-to-select ─────────────────────────────────────────────────────
  * Drawing a circle / rectangle / polygon makes the shape the comp set:

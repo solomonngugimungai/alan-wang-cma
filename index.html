@@ -79,6 +79,20 @@
   .map-pin-active{background:#4b5563}
   .map-pin-inactive{background:#a8231b;opacity:.7}
   .map-pin.excluded{opacity:.35;filter:grayscale(1)}
+  /* School-zone coloring (distinct hues, stable palette assigned in JS) */
+  .map-pin.zc0{background:#2563eb}.map-pin.zc1{background:#16a34a}.map-pin.zc2{background:#db2777}
+  .map-pin.zc3{background:#ea580c}.map-pin.zc4{background:#7c3aed}.map-pin.zc5{background:#0891b2}
+  .map-pin.zc6{background:#ca8a04}.map-pin.zc7{background:#dc2626}.map-pin.zc8{background:#4338ca}
+  .map-pin.zc9{background:#15803d}.map-pin.zc-unknown{background:#9ca3af}
+  .map-pin.zone-diff{border-color:#1a1a1a;border-style:dashed}
+  .zone-legend{display:none;flex-wrap:wrap;align-items:center;gap:6px 14px;padding:10px 4px 2px;font-family:var(--font)}
+  .zone-legend.on{display:flex}
+  .zone-legend .zl-title{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--gray-text)}
+  .zone-legend .zl-item{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--text)}
+  .zone-legend .zl-dot{width:13px;height:13px;border-radius:50%;border:2px solid #fff;box-shadow:0 1px 2px rgba(0,0,0,.3)}
+  .zone-legend .zl-subj{font-weight:700;color:#1a1a1a}
+  .zone-legend .zl-count{color:var(--gray-text)}
+  .zone-legend .zl-note{font-size:11px;color:var(--red)}
   .map-popup{font-family:var(--font);font-size:12px;min-width:180px;line-height:1.45}
   .map-popup b{color:var(--navy)}
   .map-popup .pop-row{display:flex;justify-content:space-between;gap:8px;margin-top:3px}
@@ -278,11 +292,13 @@
       <div class="map-title">Comp Map <span class="map-hint">click pin ⇄ comp · draw a box / circle / polygon to select comps inside · line = divider</span></div>
       <div class="map-controls">
         <span id="geo-status" class="geo-status"></span>
+        <button class="qa-btn" onclick="toggleZoneColoring()" id="zone-color-toggle">Color by school zone</button>
         <button class="qa-btn" onclick="clearMapDrawings()">Clear drawings</button>
         <button class="qa-btn" onclick="toggleMap()" id="map-toggle">Hide map</button>
       </div>
     </div>
     <div id="map"></div>
+    <div id="zone-legend" class="zone-legend"></div>
   </div>
   <div class="quick-actions">
     <span class="qa-label">Quick select</span>
