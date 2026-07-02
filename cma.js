@@ -370,6 +370,11 @@ function renderSummary(){
   if(rec.price){
     h+='<div class="rec-headline"><div class="rec-label">Recommended Price</div><div class="rec-value">'+fmt(rec.price)+'</div>';
     h+='<div class="rec-range">Supported range <b>'+fmt(rec.low)+'</b> – <b>'+fmt(rec.high)+'</b> &middot; '+rec.n+' value comp'+(rec.n===1?"":"s")+'</div>';
+    // Alan's cross-checks: $/SqFt basis and median comp value.
+    var xc=[];
+    if(rec.ppsfPrice)xc.push('By $/SqFt: <b>'+fmt(rec.ppsfPrice)+'</b> <span class="rec-dim">('+fmtD(rec.ppsf)+'/sqft × '+rec.subjSqFt.toLocaleString()+' sqft)</span>');
+    if(rec.median!=null)xc.push('Median comp: <b>'+fmt(rec.median)+'</b>');
+    if(xc.length)h+='<div class="rec-xcheck">'+xc.join(' &nbsp;·&nbsp; ')+'</div>';
     h+='</div>';
   }else{
     h+='<div class="rec-headline rec-empty"><div class="rec-label">Recommended Price</div><div class="rec-value">—</div><div class="rec-range">Select at least one Sold or Pending comp with a price.</div></div>';
@@ -608,20 +613,36 @@ function recommendedPrice(entries){
     if(!e.included||!e.valueIncluded||e.adjustedValue==null||e.weight<=0)continue;
     pool.push(e);
   }
-  if(!pool.length)return{price:null,low:null,high:null,n:0,spread:0,pool:[]};
-  var wSum=0,wTot=0,vals=[];
+  if(!pool.length)return{price:null,low:null,high:null,n:0,spread:0,pool:[],median:null,ppsf:null,ppsfPrice:null};
+  var wSum=0,wTot=0,vals=[],ppsfWSum=0,ppsfWTot=0,ppsfVals=[];
   for(var i=0;i<pool.length;i++){
     wSum+=pool[i].adjustedValue*pool[i].weight;
     wTot+=pool[i].weight;
     vals.push(pool[i].adjustedValue);
+    // $/SqFt basis — Alan's core metric. Normalizes out size differences so a
+    // bigger/smaller comp doesn't skew the subject's estimate.
+    var sq=pool[i].comp.sqft;
+    if(sq){var pp=pool[i].adjustedValue/sq;ppsfWSum+=pp*pool[i].weight;ppsfWTot+=pool[i].weight;ppsfVals.push(pp)}
   }
   var price=Math.round(wSum/wTot);
   var low=Math.min.apply(null,vals),high=Math.max.apply(null,vals);
+  var subjSqFt=(DATA&&DATA.subjectSqFt)?DATA.subjectSqFt:null;
+  var ppsf=ppsfWTot?ppsfWSum/ppsfWTot:null;                 // weighted mean $/sqft
+  var ppsfMedian=median(ppsfVals);
+  // Use the median $/sqft × subject sqft as the headline $/sqft estimate (robust to outliers).
+  var ppsfPrice=(subjSqFt&&ppsfMedian)?Math.round(subjSqFt*ppsfMedian):null;
   return{
     price:price, low:low, high:high, n:pool.length,
     spread:price?(high-low)/price:0,
+    median:median(vals), ppsf:ppsfMedian, ppsfMean:ppsf, ppsfPrice:ppsfPrice, subjSqFt:subjSqFt,
     pool:pool
   };
+}
+/* Median of a numeric array (null if empty). */
+function median(arr){
+  if(!arr||!arr.length)return null;
+  var s=arr.slice().sort(function(a,b){return a-b}),m=Math.floor(s.length/2);
+  return s.length%2?s[m]:Math.round((s[m-1]+s[m])/2);
 }
 
 /* ── Report generation ──────────────────────────────────────────────── */
@@ -644,7 +665,10 @@ function doGenerate(){
       h+='<div class="pb-block"><div class="lbl">Suggested List Price</div><div class="val">'+esc(sp)+'</div></div>';
     }
     if(rec.price){
-      h+='<div class="pb-block'+(sp?' pb-secondary':'')+'"><div class="lbl">Recommended (Computed)</div><div class="val">'+fmt(rec.price)+'</div><div class="sub">Supported range '+fmt(rec.low)+' – '+fmt(rec.high)+' &middot; '+rec.n+' value comp'+(rec.n===1?"":"s")+'</div></div>';
+      var sub='Supported range '+fmt(rec.low)+' – '+fmt(rec.high)+' &middot; '+rec.n+' value comp'+(rec.n===1?"":"s");
+      if(rec.ppsfPrice)sub+=' &middot; By $/SqFt '+fmt(rec.ppsfPrice)+' ('+fmtD(rec.ppsf)+'/sqft)';
+      if(rec.median!=null)sub+=' &middot; Median '+fmt(rec.median);
+      h+='<div class="pb-block'+(sp?' pb-secondary':'')+'"><div class="lbl">Recommended (Computed)</div><div class="val">'+fmt(rec.price)+'</div><div class="sub">'+sub+'</div></div>';
     }
     if(sn){h+='<div class="notes"><div class="lbl">Rationale</div><p>'+esc(sn)+'</p></div>'}
     h+='</div>';
