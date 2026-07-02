@@ -44,7 +44,8 @@ var SETTINGS_DEFAULTS = {
   // Alan-calibrated weighting (reverse-engineered from his CMAs):
   dom:            { strongMax: 21, softMax: 45, softFactor: 0.85, staleFactor: 0.7 }, // stale solds are weaker signals
   locality:       { complexFactor: 1.5, streetFactor: 1.25 }, // same building / same street comps carry more
-  pendingFactor:  0.6                                     // pending list price ≠ a closed sale → down-weight
+  pendingFactor:  0.6,                                    // pending list price ≠ a closed sale → down-weight
+  land:           { minComps: 2 }                          // $/lot-sf land lens: min lot-comparable comps required
 };
 var SETTINGS = loadSettings();
 
@@ -380,6 +381,7 @@ function renderSummary(){
     if(rec.basis==="ppsf"&&rec.meanPrice!=null)xc.push('Weighted mean: <b>'+fmt(rec.meanPrice)+'</b>');
     if(rec.basis==="mean"&&rec.ppsfPrice)xc.push('By $/SqFt: <b>'+fmt(rec.ppsfPrice)+'</b>');
     if(rec.median!=null)xc.push('Median comp: <b>'+fmt(rec.median)+'</b>');
+    if(rec.landPrice)xc.push('By $/Lot: <b>'+fmt(rec.landPrice)+'</b> <span class="rec-dim">('+fmtD(rec.landPpsf)+'/lot-sqft × '+rec.subjLot.toLocaleString()+' lot, '+rec.landN+' lot-comparable)</span>');
     if(xc.length)h+='<div class="rec-xcheck">'+xc.join(' &nbsp;·&nbsp; ')+'</div>';
     h+='</div>';
   }else{
@@ -684,12 +686,31 @@ function recommendedPrice(entries){
   }else{
     low=Math.min.apply(null,vals);high=Math.max.apply(null,vals);
   }
+
+  // ── Land-value lens ($/Lot-SqFt) ─────────────────────────────────────
+  // Building $/sqft undervalues a large-lot subject (its neighbors trade on
+  // the dirt — the Menlo Park teardown pattern). Compute a land-based estimate
+  // from ONLY lot-comparable comps; mixing townhome and estate lots is noise.
+  var subjLot=(DATA&&DATA.subjectLotSqft)?DATA.subjectLotSqft:null;
+  var landVals=[];
+  if(subjLot){
+    var lotThr=SETTINGS.lotMismatchThreshold;
+    for(var li=0;li<pool.length;li++){
+      var lot=pool[li].comp.lotSqft;
+      if(lot&&Math.abs(lot-subjLot)/subjLot<=lotThr)landVals.push(pool[li].adjustedValue/lot);
+    }
+  }
+  var landPpsf=median(landVals);
+  var minLand=(SETTINGS.land&&SETTINGS.land.minComps)||2;
+  var landPrice=(subjLot&&landPpsf&&landVals.length>=minLand)?Math.round(subjLot*landPpsf):null;
+
   return{
     price:price, low:low, high:high, n:pool.length,
     spread:price?(high-low)/price:0,
     basis:usePpsf?"ppsf":"mean",
     meanPrice:meanPrice, median:median(vals),
     ppsf:ppsfMedian, ppsfMean:ppsf, ppsfPrice:ppsfPrice, subjSqFt:subjSqFt,
+    landPrice:landPrice, landPpsf:landPpsf, landN:landVals.length, subjLot:subjLot,
     pool:pool
   };
 }
@@ -724,6 +745,7 @@ function doGenerate(){
       if(rec.basis==="ppsf")sub+=' &middot; Basis: $/SqFt ('+fmtD(rec.ppsf)+'/sqft × '+rec.subjSqFt.toLocaleString()+')';
       if(rec.meanPrice!=null&&rec.basis==="ppsf")sub+=' &middot; Weighted mean '+fmt(rec.meanPrice);
       if(rec.median!=null)sub+=' &middot; Median '+fmt(rec.median);
+      if(rec.landPrice)sub+=' &middot; By $/Lot '+fmt(rec.landPrice)+' ('+fmtD(rec.landPpsf)+'/lot-sqft, '+rec.landN+' comps)';
       h+='<div class="pb-block'+(sp?' pb-secondary':'')+'"><div class="lbl">Recommended (Computed)</div><div class="val">'+fmt(rec.price)+'</div><div class="sub">'+sub+'</div></div>';
     }
     if(sn){h+='<div class="notes"><div class="lbl">Rationale</div><p>'+esc(sn)+'</p></div>'}
@@ -1014,6 +1036,8 @@ function buildMapPopup(cs,idx){
   if(headline)h+='<div class="pop-row"><span>'+(c.salePrice?"Sale":"List")+'</span><b>'+fmt(headline)+'</b></div>';
   if(cs.adjustedValue)h+='<div class="pop-row"><span>Adjusted</span><b>'+fmt(cs.adjustedValue)+'</b></div>';
   if(cs.score!=null)h+='<div class="pop-row"><span>Score</span><b>'+cs.score+'</b></div>';
+  var bp=compBasePrice(cs);
+  if(bp&&c.lotSqft)h+='<div class="pop-row"><span>$/Lot SqFt</span><b>'+fmtD(bp/c.lotSqft)+'</b></div>';
   if(cs.zone&&cs.zone!=="—"){
     var sz=subjectZone(),diff=(sz!=="—"&&cs.zone!==sz);
     h+='<div class="pop-row"><span>School zone</span><b'+(diff?' style="color:#a8231b"':'')+'>'+esc(cs.zone)+(diff?' &#9888;':'')+'</b></div>';
