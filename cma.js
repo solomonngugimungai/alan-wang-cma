@@ -40,7 +40,11 @@ var SETTINGS_DEFAULTS = {
   recency:        { windowMonths: 6, factor: 0.5 },
   lotMismatchThreshold: 0.30,                            // 30%
   marketRead:     { softRatio: 0.5 },                    // (expired+cancelled+withdrawn) / sold ≥ this → "soft"
-  dataQuality:    { minValueComps: 3, rangeSpread: 0.25 } // <3 value comps OR spread > 25% of rec → warn
+  dataQuality:    { minValueComps: 3, rangeSpread: 0.25 },// <3 value comps OR spread > 25% of rec → warn
+  // Alan-calibrated weighting (reverse-engineered from his CMAs):
+  dom:            { strongMax: 21, softMax: 45, softFactor: 0.85, staleFactor: 0.7 }, // stale solds are weaker signals
+  locality:       { complexFactor: 1.5, streetFactor: 1.25 }, // same building / same street comps carry more
+  pendingFactor:  0.6                                     // pending list price ≠ a closed sale → down-weight
 };
 var SETTINGS = loadSettings();
 
@@ -368,11 +372,13 @@ function renderSummary(){
 
   var h='<div class="rec-panel">';
   if(rec.price){
-    h+='<div class="rec-headline"><div class="rec-label">Recommended Price</div><div class="rec-value">'+fmt(rec.price)+'</div>';
+    var basisNote=rec.basis==="ppsf"?'<span class="rec-dim"> · by $/SqFt ('+fmtD(rec.ppsf)+'/sqft × '+rec.subjSqFt.toLocaleString()+' sqft)</span>':'';
+    h+='<div class="rec-headline"><div class="rec-label">Recommended Price</div><div class="rec-value">'+fmt(rec.price)+basisNote+'</div>';
     h+='<div class="rec-range">Supported range <b>'+fmt(rec.low)+'</b> – <b>'+fmt(rec.high)+'</b> &middot; '+rec.n+' value comp'+(rec.n===1?"":"s")+'</div>';
-    // Alan's cross-checks: $/SqFt basis and median comp value.
+    // Cross-checks: whichever basis isn't the headline, plus the median comp value.
     var xc=[];
-    if(rec.ppsfPrice)xc.push('By $/SqFt: <b>'+fmt(rec.ppsfPrice)+'</b> <span class="rec-dim">('+fmtD(rec.ppsf)+'/sqft × '+rec.subjSqFt.toLocaleString()+' sqft)</span>');
+    if(rec.basis==="ppsf"&&rec.meanPrice!=null)xc.push('Weighted mean: <b>'+fmt(rec.meanPrice)+'</b>');
+    if(rec.basis==="mean"&&rec.ppsfPrice)xc.push('By $/SqFt: <b>'+fmt(rec.ppsfPrice)+'</b>');
     if(rec.median!=null)xc.push('Median comp: <b>'+fmt(rec.median)+'</b>');
     if(xc.length)h+='<div class="rec-xcheck">'+xc.join(' &nbsp;·&nbsp; ')+'</div>';
     h+='</div>';
@@ -491,6 +497,21 @@ function compBasePrice(cs){
   if(/pending|contingent/.test(st))return c.listPrice||null;
   return null;
 }
+/* Street name + leading house number, lowercased, unit stripped. */
+function parseStreet(addr){
+  var first=(addr||"").split(",")[0].trim().toLowerCase()
+    .replace(/#.*$/,"").replace(/\b(apt|unit|ste|suite|spc|space|lot)\b.*$/i,"").trim();
+  var m=first.match(/^(\d+)\s+(.*)$/);
+  return m?{num:m[1],name:m[2].replace(/\s+/g," ").trim()}:{num:null,name:first.replace(/\s+/g," ").trim()};
+}
+/* Comp vs. subject locality: "complex" (same building/number + street),
+ * "street" (same street name), or "" (neither). */
+function localityMatch(compAddr){
+  if(!DATA||!DATA.subjectAddress||!compAddr)return "";
+  var s=parseStreet(DATA.subjectAddress),c=parseStreet(compAddr);
+  if(!s.name||!c.name||s.name!==c.name)return "";
+  return (s.num&&c.num&&s.num===c.num)?"complex":"street";
+}
 /* Dollar cost remaining to bring a property up to Move-in ready. */
 function remodelCost(condition){
   if(condition==="Poor")return SETTINGS.conditionCosts.poorToMoveIn||0;
@@ -579,6 +600,28 @@ function updateScores(){
       }
     }
 
+    // DOM weight — Alan leans on quick sales; a stale sold closed weak, so it's
+    // a less reliable price signal. Only applies to solds (pending has no COE).
+    var isSold=/sold/.test((cs.status||"").toLowerCase());
+    if(isSold&&cs.comp.dom!=null){
+      var dom=cs.comp.dom,domF=1;
+      if(dom>SETTINGS.dom.softMax)domF=SETTINGS.dom.staleFactor;
+      else if(dom>SETTINGS.dom.strongMax)domF=SETTINGS.dom.softFactor;
+      if(domF!==1){cs.weight*=domF;cs.flags.push({t:"DOM "+dom+" (×"+domF+")",c:"y"})}
+    }
+
+    // Same-locality boost — same building/complex or same street trades tighter
+    // (Pinto Palm: 6 sold units in the subject's own building).
+    var loc=localityMatch(cs.comp.address);
+    if(loc==="complex"){cs.weight*=SETTINGS.locality.complexFactor;cs.flags.push({t:"Same complex (×"+SETTINGS.locality.complexFactor+")",c:"g"})}
+    else if(loc==="street"){cs.weight*=SETTINGS.locality.streetFactor;cs.flags.push({t:"Same street (×"+SETTINGS.locality.streetFactor+")",c:"g"})}
+
+    // Pending list price is an ask, not a close — down-weight vs. solds.
+    if(/pending|contingent/.test((cs.status||"").toLowerCase())){
+      cs.weight*=SETTINGS.pendingFactor;
+      cs.flags.push({t:"Pending list (×"+SETTINGS.pendingFactor+")",c:"y"});
+    }
+
     // Divider: exclude or down-weight.
     if(cs.acrossDivider){
       if(SETTINGS.divider.mode==="exclude"){
@@ -624,17 +667,29 @@ function recommendedPrice(entries){
     var sq=pool[i].comp.sqft;
     if(sq){var pp=pool[i].adjustedValue/sq;ppsfWSum+=pp*pool[i].weight;ppsfWTot+=pool[i].weight;ppsfVals.push(pp)}
   }
-  var price=Math.round(wSum/wTot);
-  var low=Math.min.apply(null,vals),high=Math.max.apply(null,vals);
+  var meanPrice=Math.round(wSum/wTot);                     // weighted mean of absolute adjusted values
   var subjSqFt=(DATA&&DATA.subjectSqFt)?DATA.subjectSqFt:null;
   var ppsf=ppsfWTot?ppsfWSum/ppsfWTot:null;                 // weighted mean $/sqft
   var ppsfMedian=median(ppsfVals);
-  // Use the median $/sqft × subject sqft as the headline $/sqft estimate (robust to outliers).
+  // Median $/sqft × subject sqft — Alan's core estimate, robust to size/outliers.
   var ppsfPrice=(subjSqFt&&ppsfMedian)?Math.round(subjSqFt*ppsfMedian):null;
+  // Headline = $/SqFt estimate when we can compute it, else the weighted mean.
+  var usePpsf=ppsfPrice!=null;
+  var price=usePpsf?ppsfPrice:meanPrice;
+  // Range brackets the headline: $/sqft-derived when the headline is $/sqft-based.
+  var low,high;
+  if(usePpsf&&ppsfVals.length){
+    low=Math.round(Math.min.apply(null,ppsfVals)*subjSqFt);
+    high=Math.round(Math.max.apply(null,ppsfVals)*subjSqFt);
+  }else{
+    low=Math.min.apply(null,vals);high=Math.max.apply(null,vals);
+  }
   return{
     price:price, low:low, high:high, n:pool.length,
     spread:price?(high-low)/price:0,
-    median:median(vals), ppsf:ppsfMedian, ppsfMean:ppsf, ppsfPrice:ppsfPrice, subjSqFt:subjSqFt,
+    basis:usePpsf?"ppsf":"mean",
+    meanPrice:meanPrice, median:median(vals),
+    ppsf:ppsfMedian, ppsfMean:ppsf, ppsfPrice:ppsfPrice, subjSqFt:subjSqFt,
     pool:pool
   };
 }
@@ -666,7 +721,8 @@ function doGenerate(){
     }
     if(rec.price){
       var sub='Supported range '+fmt(rec.low)+' – '+fmt(rec.high)+' &middot; '+rec.n+' value comp'+(rec.n===1?"":"s");
-      if(rec.ppsfPrice)sub+=' &middot; By $/SqFt '+fmt(rec.ppsfPrice)+' ('+fmtD(rec.ppsf)+'/sqft)';
+      if(rec.basis==="ppsf")sub+=' &middot; Basis: $/SqFt ('+fmtD(rec.ppsf)+'/sqft × '+rec.subjSqFt.toLocaleString()+')';
+      if(rec.meanPrice!=null&&rec.basis==="ppsf")sub+=' &middot; Weighted mean '+fmt(rec.meanPrice);
       if(rec.median!=null)sub+=' &middot; Median '+fmt(rec.median);
       h+='<div class="pb-block'+(sp?' pb-secondary':'')+'"><div class="lbl">Recommended (Computed)</div><div class="val">'+fmt(rec.price)+'</div><div class="sub">'+sub+'</div></div>';
     }
